@@ -141,7 +141,7 @@ class MainActivity : AppCompatActivity() {
 
         val headerBlock = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         headerBlock.addView(TextView(this).apply {
-            text = "🌴 CASAMBI JUNGLE\n// v0.7.7"
+            text = "🌴 CASAMBI JUNGLE\n// v0.7.8"
             textSize = 20f
             setTextColor(leaf)
             setTypeface(Typeface.MONOSPACE, Typeface.BOLD)
@@ -569,6 +569,28 @@ class MainActivity : AppCompatActivity() {
         val saveSettings = button("EINSTELLUNGEN SPEICHERN").apply { visibility = View.GONE }
         configCard.addView(saveSettings)
 
+        val permissionsCard = card("Scanner Permissions")
+        val permissionStatusText = TextView(this).apply {
+            textSize = 10f
+            setTextColor(textMuted)
+            setTypeface(Typeface.MONOSPACE, Typeface.NORMAL)
+            setPadding(0, 8, 0, 8)
+        }
+        val requestScanPermissionsButton = button("REQUEST SCANNER PERMISSIONS")
+        permissionsCard.addView(permissionStatusText)
+        permissionsCard.addView(requestScanPermissionsButton)
+        fun scannerPermissionStatus(): String {
+            val fine = ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+            val btScan = android.os.Build.VERSION.SDK_INT < 31 || ContextCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_SCAN) == PackageManager.PERMISSION_GRANTED
+            val btConnect = android.os.Build.VERSION.SDK_INT < 31 || ContextCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED
+            val wifiNearby = android.os.Build.VERSION.SDK_INT < 33 || ContextCompat.checkSelfPermission(this, Manifest.permission.NEARBY_WIFI_DEVICES) == PackageManager.PERMISSION_GRANTED
+            return "Location=$fine  BLE_SCAN=$btScan  BLE_CONNECT=$btConnect  NEARBY_WIFI=$wifiNearby\nWiFi Scan braucht je nach Android-Version Standortberechtigung und aktivierte Standortdienste."
+        }
+        fun refreshPermissionStatus() { permissionStatusText.text = scannerPermissionStatus() }
+        refreshPermissionStatus()
+        requestScanPermissionsButton.setOnClickListener { requestPermissionsIfNeeded(); ui.postDelayed({ refreshPermissionStatus() }, 600) }
+
+
         fun switchRow(parent: LinearLayout, text: String, checked: Boolean): Pair<Switch, TextView> {
             val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
             val l = led()
@@ -642,12 +664,20 @@ class MainActivity : AppCompatActivity() {
         })
         val netRange = field(scanToolsCard, "Network Range CIDR leer = aktuelles /24", "")
         val netFilter = field(scanToolsCard, "Network Filter Name/IP/Port", "")
+        val netPortMode = field(scanToolsCard, "Port Mode known/all/custom", "known")
+        val netCustomPorts = field(scanToolsCard, "Custom Ports komma-separiert", "22,80,443,445,1883,5555,8080,8123")
         val netBtnRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         val scanIpButton = actionGridButton("SCAN IP")
+        val stopIpButton = actionGridButton("STOP IP")
         val scanMdnsButton = actionGridButton("SCAN mDNS")
+        val stopMdnsButton = actionGridButton("STOP mDNS")
         netBtnRow.addView(scanIpButton)
-        netBtnRow.addView(scanMdnsButton)
+        netBtnRow.addView(stopIpButton)
         scanToolsCard.addView(netBtnRow)
+        val netBtnRow2 = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        netBtnRow2.addView(scanMdnsButton)
+        netBtnRow2.addView(stopMdnsButton)
+        scanToolsCard.addView(netBtnRow2)
         val exportNetButton = button("EXPORT NETWORK SCAN SMB")
         scanToolsCard.addView(exportNetButton)
         val networkResultText = TextView(this).apply {
@@ -663,10 +693,14 @@ class MainActivity : AppCompatActivity() {
         val btFilter = field(btToolsCard, "Bluetooth Filter Name/MAC", "")
         val btRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         val scanBtAllButton = actionGridButton("SCAN BT ALL")
+        val stopBtButton = actionGridButton("STOP BT")
         val exportBtButton = actionGridButton("EXPORT BT")
         btRow.addView(scanBtAllButton)
-        btRow.addView(exportBtButton)
+        btRow.addView(stopBtButton)
         btToolsCard.addView(btRow)
+        val btRow2 = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        btRow2.addView(exportBtButton)
+        btToolsCard.addView(btRow2)
         val bluetoothResultText = TextView(this).apply {
             text = "Noch kein Bluetooth Scan."
             textSize = 9f
@@ -680,10 +714,14 @@ class MainActivity : AppCompatActivity() {
         val wifiFilter = field(wifiToolsCard, "WiFi Filter SSID/BSSID", "")
         val wifiRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         val scanWifiButton = actionGridButton("SCAN WIFI")
+        val stopWifiButton = actionGridButton("STOP WIFI")
         val exportWifiButton = actionGridButton("EXPORT WIFI")
         wifiRow.addView(scanWifiButton)
-        wifiRow.addView(exportWifiButton)
+        wifiRow.addView(stopWifiButton)
         wifiToolsCard.addView(wifiRow)
+        val wifiRow2 = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        wifiRow2.addView(exportWifiButton)
+        wifiToolsCard.addView(wifiRow2)
         val wifiResultText = TextView(this).apply {
             text = "Noch kein WiFi Scan."
             textSize = 9f
@@ -742,6 +780,30 @@ class MainActivity : AppCompatActivity() {
         var lastNetworkScanText = ""
         var lastBluetoothScanText = ""
         var lastWifiScanText = ""
+        var stopIpScan = false
+        var stopBtScan = false
+        var stopMdnsScan = false
+        var stopWifiScan = false
+        var activeBtScanner: android.bluetooth.le.BluetoothLeScanner? = null
+        var activeBtCallback: ScanCallback? = null
+        var activeMdnsManager: NsdManager? = null
+        val activeMdnsListeners = mutableListOf<NsdManager.DiscoveryListener>()
+        val bluetoothSessions = ArrayDeque<String>()
+        val wifiSessions = ArrayDeque<String>()
+        fun rememberSession(queue: ArrayDeque<String>, value: String) {
+            queue.addFirst(value)
+            while (queue.size > 2) queue.removeLast()
+        }
+        fun portListForScan(): List<Int> {
+            val mode = netPortMode.text.toString().trim().lowercase()
+            val custom = netCustomPorts.text.toString().split(',', ';', ' ').mapNotNull { it.trim().toIntOrNull() }.filter { it in 1..65535 }.distinct()
+            val known = custom.ifEmpty { listOf(22, 53, 80, 443, 445, 1883, 5555, 8080, 8123) }
+            return when (mode) {
+                "all" -> (1..65535).toList()
+                "custom" -> known
+                else -> known
+            }
+        }
         fun currentSubnet24(): String {
             val ip = runCatching {
                 NetworkInterface.getNetworkInterfaces().toList()
@@ -773,15 +835,17 @@ class MainActivity : AppCompatActivity() {
             }.start()
         }
         fun scanIpNetwork() {
+            stopIpScan = false
             val input = netRange.text.toString().trim().ifBlank { currentSubnet24() }
             val filter = netFilter.text.toString().trim().lowercase()
             networkResultText.text = "IP Scan laeuft: $input ..."
             LogBus.log("Network Scanner: IP Scan gestartet range=$input")
             Thread {
                 val base = input.substringBefore('/').substringBeforeLast('.', "192.168.1")
-                val ports = listOf(22, 80, 443, 445, 1883, 5555, 8080, 8123)
+                val ports = portListForScan()
                 val rows = mutableListOf<String>()
                 for (i in 1..254) {
+                    if (stopIpScan) break
                     val ip = "$base.$i"
                     try {
                         val addr = InetAddress.getByName(ip)
@@ -803,7 +867,10 @@ class MainActivity : AppCompatActivity() {
         fun scanMdnsServices() {
             networkResultText.text = "mDNS/Zeroconf Scan laeuft..."
             LogBus.log("Network Scanner: mDNS Scan gestartet")
+            stopMdnsScan = false
             val manager = getSystemService(Context.NSD_SERVICE) as? NsdManager ?: return
+            activeMdnsManager = manager
+            activeMdnsListeners.clear()
             val types = listOf("_casambi-jungle._tcp.", "_home-assistant._tcp.", "_http._tcp.", "_mqtt._tcp.", "_workstation._tcp.", "_googlecast._tcp.", "_hap._tcp.")
             val results = linkedSetOf<String>()
             val listeners = mutableListOf<NsdManager.DiscoveryListener>()
@@ -812,7 +879,8 @@ class MainActivity : AppCompatActivity() {
                 lastNetworkScanText = txt
                 runOnUiThread { networkResultText.text = txt }
             }
-            types.forEach { type ->
+            types.forEachIndexed { typeIndex, type ->
+                if (stopMdnsScan) return@forEachIndexed
                 val listener = object : NsdManager.DiscoveryListener {
                     override fun onDiscoveryStarted(regType: String) {}
                     override fun onServiceFound(service: NsdServiceInfo) {
@@ -837,19 +905,26 @@ class MainActivity : AppCompatActivity() {
                     override fun onStopDiscoveryFailed(serviceType: String, errorCode: Int) { runCatching { manager.stopServiceDiscovery(this) } }
                 }
                 listeners += listener
+                activeMdnsListeners += listener
+                runOnUiThread { networkResultText.text = "mDNS Scan ${typeIndex + 1}/${types.size}: $type
+" + results.sorted().joinToString("
+") }
                 runCatching { manager.discoverServices(type, NsdManager.PROTOCOL_DNS_SD, listener) }
             }
-            ui.postDelayed({ listeners.forEach { runCatching { manager.stopServiceDiscovery(it) } }; render(true); LogBus.log("Network Scanner: mDNS Scan fertig Treffer=${results.size}") }, 8000)
+            ui.postDelayed({ listeners.forEach { runCatching { manager.stopServiceDiscovery(it) } }; activeMdnsListeners.clear(); render(true); LogBus.log("Network Scanner: mDNS Scan fertig Treffer=${results.size}") }, 8000)
         }
         fun scanBluetoothAll() {
+            stopBtScan = false
             val filter = btFilter.text.toString().trim().lowercase()
             bluetoothResultText.text = "Bluetooth Scan laeuft..."
             LogBus.log("Bluetooth Scanner: Scan all gestartet")
             val scanner = getSystemService(BluetoothManager::class.java)?.adapter?.bluetoothLeScanner
             if (scanner == null) { bluetoothResultText.text = "Bluetooth Scanner nicht verfuegbar"; return }
             val found = linkedMapOf<String, String>()
+            val scanStarted = System.currentTimeMillis()
             val callback = object : ScanCallback() {
                 override fun onScanResult(callbackType: Int, result: ScanResult) {
+                    if (stopBtScan) return
                     val record = result.scanRecord
                     val name = runCatching { result.device.name ?: record?.deviceName ?: "" }.getOrDefault(record?.deviceName ?: "")
                     val address = result.device.address ?: "?"
@@ -862,19 +937,25 @@ class MainActivity : AppCompatActivity() {
                 override fun onScanFailed(errorCode: Int) { runOnUiThread { bluetoothResultText.text = "Bluetooth Scan Fehler code=$errorCode" } }
             }
             try {
+                activeBtScanner = scanner
+                activeBtCallback = callback
                 scanner.startScan(null, ScanSettings.Builder().setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY).build(), callback)
-                ui.postDelayed({ runCatching { scanner.stopScan(callback) }; LogBus.log("Bluetooth Scanner: Scan all fertig Treffer=${found.size}") }, 9000)
+                ui.postDelayed({ runCatching { scanner.stopScan(callback) }; activeBtScanner = null; activeBtCallback = null; rememberSession(bluetoothSessions, lastBluetoothScanText); LogBus.log("Bluetooth Scanner: Scan all fertig Treffer=${found.size}") }, 9000)
             } catch (t: Throwable) { bluetoothResultText.text = "Bluetooth Scan Fehler: ${t.message}" }
         }
         @Suppress("DEPRECATION")
         fun scanWifiSignals() {
+            stopWifiScan = false
+            refreshPermissionStatus()
             val filter = wifiFilter.text.toString().trim().lowercase()
             val wifi = applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager
             if (wifi == null) { wifiResultText.text = "WiFi Manager nicht verfuegbar"; return }
-            wifiResultText.text = "WiFi Scan laeuft..."
+            wifiResultText.text = "WiFi Scan laeuft...
+" + scannerPermissionStatus()
             LogBus.log("WiFi Scanner: Scan gestartet")
             runCatching { wifi.startScan() }
             ui.postDelayed({
+                if (stopWifiScan) { wifiResultText.text = "WiFi Scan gestoppt"; return@postDelayed }
                 val rows = runCatching { wifi.scanResults }.getOrDefault(emptyList()).map { r ->
                     val ssid = (r.SSID ?: "").ifBlank { "<hidden>" }
                     val line = "rssi=${r.level.toString().padStart(4)}  ssid=$ssid  bssid=${r.BSSID}  freq=${r.frequency}  caps=${r.capabilities}"
@@ -1039,6 +1120,7 @@ class MainActivity : AppCompatActivity() {
             }
             val callback = object : ScanCallback() {
                 override fun onScanResult(callbackType: Int, result: ScanResult) {
+                    if (stopBtScan) return
                     val record = result.scanRecord
                     val device = result.device
                     val name = try { device.name ?: record?.deviceName ?: "" } catch (_: SecurityException) { record?.deviceName ?: "" }
@@ -1208,11 +1290,19 @@ class MainActivity : AppCompatActivity() {
         setupAddFetch.setOnClickListener { fetchApi.performClick() }
 
         scanIpButton.setOnClickListener { scanIpNetwork() }
+        stopIpButton.setOnClickListener { stopIpScan = true; networkResultText.text = networkResultText.text.toString() + "
+STOP angefordert" }
         scanMdnsButton.setOnClickListener { scanMdnsServices() }
+        stopMdnsButton.setOnClickListener { stopMdnsScan = true; activeMdnsListeners.forEach { runCatching { activeMdnsManager?.stopServiceDiscovery(it) } }; activeMdnsListeners.clear(); networkResultText.text = networkResultText.text.toString() + "
+mDNS STOP" }
         exportNetButton.setOnClickListener { exportScanToSmb("network_scan", lastNetworkScanText.ifBlank { networkResultText.text.toString() }) }
         scanBtAllButton.setOnClickListener { scanBluetoothAll() }
+        stopBtButton.setOnClickListener { stopBtScan = true; activeBtCallback?.let { cb -> runCatching { activeBtScanner?.stopScan(cb) } }; activeBtScanner = null; activeBtCallback = null; rememberSession(bluetoothSessions, lastBluetoothScanText); bluetoothResultText.text = bluetoothResultText.text.toString() + "
+BT STOP" }
         exportBtButton.setOnClickListener { exportScanToSmb("bluetooth_scan", lastBluetoothScanText.ifBlank { bluetoothResultText.text.toString() }) }
         scanWifiButton.setOnClickListener { scanWifiSignals() }
+        stopWifiButton.setOnClickListener { stopWifiScan = true; wifiResultText.text = wifiResultText.text.toString() + "
+WIFI STOP" }
         exportWifiButton.setOnClickListener { exportScanToSmb("wifi_scan", lastWifiScanText.ifBlank { wifiResultText.text.toString() }) }
 
         if (mac.text.toString().isBlank()) ui.postDelayed({ scanBluetoothForCasambi() }, 900)
@@ -1309,6 +1399,9 @@ class MainActivity : AppCompatActivity() {
         if (android.os.Build.VERSION.SDK_INT >= 31) {
             permissions += Manifest.permission.BLUETOOTH_SCAN
             permissions += Manifest.permission.BLUETOOTH_CONNECT
+        }
+        if (android.os.Build.VERSION.SDK_INT >= 33) {
+            permissions += Manifest.permission.NEARBY_WIFI_DEVICES
         }
         val missing = permissions.filter { ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED }
         if (missing.isNotEmpty()) ActivityCompat.requestPermissions(this, missing.toTypedArray(), 100)

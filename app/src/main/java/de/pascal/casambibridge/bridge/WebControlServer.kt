@@ -211,7 +211,7 @@ object WebControlServer {
         val webUrl = localWebUrl(c)
         return JSONObject()
             .put("name", c.casambiNetworkName.ifBlank { "Casambi Jungle Bridge" })
-            .put("version", "0.7.7")
+            .put("version", "0.7.8")
             .put("mode", if (c.mqttEnabled && c.directModeEnabled) "hybrid" else if (c.directModeEnabled) "direct" else "mqtt")
             .put("mqtt_enabled", c.mqttEnabled && c.mqttHost.isNotBlank())
             .put("direct_enabled", c.directModeEnabled)
@@ -274,7 +274,7 @@ object WebControlServer {
         .put("brightnessPct", ((RuntimeStatus.lastBrightness.coerceIn(0,255) * 100) / 255))
         .put("lastSyncText", if (RuntimeStatus.lastSyncMillis > 0L) ageText(RuntimeStatus.lastSyncMillis) else "not synced")
         .put("lastUpdateText", if (RuntimeStatus.lastUpdateMillis > 0L) ageText(RuntimeStatus.lastUpdateMillis) else "never")
-        .put("version", "0.7.7")
+        .put("version", "0.7.8")
         .put("direct", appContext?.let { ConfigStore.load(it).directModeEnabled } ?: false)
         .put("mdns", appContext?.let { ConfigStore.load(it).networkDiscoveryEnabled } ?: false)
         .toString()
@@ -382,7 +382,7 @@ object WebControlServer {
         return page("Casambi Jungle", """
 <div class='hero'>
   <h1>CASAMBI JUNGLE</h1>
-  <div class='sub'>${esc(c.casambiNetworkName.ifBlank { "Bridge Control Center" })} - powered by Sambesi - v0.7.7</div>
+  <div class='sub'>${esc(c.casambiNetworkName.ifBlank { "Bridge Control Center" })} - powered by Sambesi - v0.7.8</div>
   <div class='msg'>${esc(message)}</div>
 </div>
 <div class='grid'>
@@ -395,6 +395,10 @@ object WebControlServer {
 """)
     }
 
+    private fun scanToolsPage(): String = page("Scan Tools", """
+<div class='toolbar'><a class='btn ghost' href='/'>HOME</a><a class='btn ghost' href='/files'>SMB Browser</a></div>
+<section class='card wide'><h2>Scan Tools</h2><p class='muted'>Die interaktiven Scanner laufen aktuell in der Android-App im ADV-Tab. Ergebnisse koennen dort als TXT per SMB exportiert werden.</p><p>Verfuegbar: IP/Port Scan, mDNS/Zeroconf Scan, Bluetooth Scan, WiFi Scan.</p></section>
+""")
     private fun logsPage(): String = page("Live Log", """
 <div class='toolbar'><a class='btn ghost' href='/'>HOME</a><a class='btn ghost' href='/logs.txt'>RAW LOG</a></div>
 <section class='card wide'><h2>Live Log</h2><pre id='logBox'>Lade Log...</pre><script>${logScript()}</script></section>
