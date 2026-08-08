@@ -547,7 +547,6 @@ class MainActivity : AppCompatActivity() {
             adapter = ArrayAdapter(this@MainActivity, android.R.layout.simple_spinner_dropdown_item, appChoices.map { it.label })
         }
         returnAppCard.addView(returnAppSpinner)
-        val (returnAppIconSwitch, returnAppIconSwitchLed) = switchRow(returnAppCard, "RETURN APP Icon anzeigen", c.returnAppShowIcon)
         val initialReturnIndex = appChoices.indexOfFirst { it.packageName == c.returnAppPackage }.takeIf { it >= 0 } ?: 0
         returnAppSpinner.setSelection(initialReturnIndex)
         selectedReturnAppPackage = appChoices[initialReturnIndex].packageName
@@ -570,6 +569,7 @@ class MainActivity : AppCompatActivity() {
             parent.addView(row)
             return sw to l
         }
+        val (returnAppIconSwitch, returnAppIconSwitchLed) = switchRow(returnAppCard, "RETURN APP Icon anzeigen", c.returnAppShowIcon)
 
         currentPage = settingsPage
         val toggleCard = card("System Toggles")
