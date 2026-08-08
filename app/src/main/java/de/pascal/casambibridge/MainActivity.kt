@@ -1,0 +1,680 @@
+package de.pascal.casambibridge
+
+import android.Manifest
+import android.bluetooth.BluetoothManager
+import android.bluetooth.le.ScanCallback
+import android.bluetooth.le.ScanResult
+import android.bluetooth.le.ScanSettings
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.graphics.Color
+import android.graphics.Typeface
+import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
+import android.os.Process
+import android.text.InputType
+import android.view.View
+import android.widget.Button
+import android.widget.EditText
+import android.widget.LinearLayout
+import android.widget.ScrollView
+import android.widget.SeekBar
+import android.widget.Switch
+import android.widget.TextView
+import androidx.appcompat.app.AppCompatActivity
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
+import de.pascal.casambibridge.bridge.BridgeConfig
+import de.pascal.casambibridge.bridge.CasambiBridgeService
+import de.pascal.casambibridge.bridge.CasambiCloudApi
+import de.pascal.casambibridge.bridge.ConfigBackup
+import de.pascal.casambibridge.bridge.ConfigStore
+import de.pascal.casambibridge.bridge.DebugExporter
+import de.pascal.casambibridge.bridge.LogBus
+import de.pascal.casambibridge.bridge.MqttBridge
+import de.pascal.casambibridge.bridge.RuntimeStatus
+import de.pascal.casambibridge.bridge.SceneStore
+import de.pascal.casambibridge.bridge.TcpLogServer
+import de.pascal.casambibridge.bridge.WebControlServer
+import kotlin.random.Random
+import java.util.UUID
+
+class MainActivity : AppCompatActivity() {
+    private val casambiManufacturerId = 963
+    private val casambiServiceUuid = UUID.fromString("c9ffde48-ca5a-0000-ab83-8f519b482f77")
+    private val ui = Handler(Looper.getMainLooper())
+    private lateinit var statusText: TextView
+    private lateinit var bleRxLed: TextView
+    private lateinit var bleTxLed: TextView
+    private lateinit var mqttInLed: TextView
+    private lateinit var mqttOutLed: TextView
+    private lateinit var smbLed: TextView
+    private lateinit var webLed: TextView
+    private lateinit var tcpLed: TextView
+    private var lampLedRef: TextView? = null
+    private var lampValueRef: TextView? = null
+    private var sceneRefresh: (() -> Unit)? = null
+
+    private val bg = Color.rgb(3, 17, 12)
+    private val panel = Color.rgb(7, 28, 20)
+    private val leaf = Color.rgb(20, 241, 149)
+    private val lime = Color.rgb(182, 255, 77)
+    private val cyan = Color.rgb(0, 229, 255)
+    private val violet = Color.rgb(138, 92, 246)
+    private val ps2Blue = Color.rgb(0, 140, 255)
+    private val ps2Purple = Color.rgb(142, 72, 255)
+    private val ps2Green = Color.rgb(20, 241, 149)
+    private val amber = Color.rgb(255, 204, 102)
+    private val darkLed = Color.rgb(34, 58, 45)
+    private val textMain = Color.rgb(234, 255, 244)
+    private val textMuted = Color.rgb(143, 187, 165)
+
+    private val logListener: (String) -> Unit = { line ->
+        statusText.text = line
+        lampValueTextSafe()?.let { it.text = "Status: ${RuntimeStatus.lastState} ${RuntimeStatus.lastBrightness}" }
+        if (::bleRxLed.isInitialized) setLedSafeLamp()
+        if (line.contains("API Fetch OK") || line.contains("Auto API Fetch OK")) ui.post { sceneRefresh?.invoke() }
+        when {
+            line.contains("Notify") || line.contains("UnitState") || line.contains("Authentication successful") -> flash(bleRxLed)
+            line.contains("TX Frame") || line.contains("TX Encrypted") || line.contains("GATT write") -> flash(bleTxLed)
+            line.contains("MQTT Command Unit") || line.contains("MQTT Command Callback") -> flash(mqttInLed)
+            line.contains("MQTT State Unit") || line.contains("publish", ignoreCase = true) -> flash(mqttOutLed)
+        }
+    }
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        requestPermissionsIfNeeded()
+        val c = ConfigStore.load(this)
+
+        val scroll = ScrollView(this).apply { setBackgroundColor(bg) }
+        val root = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(20, 18, 20, 18)
+            setBackgroundColor(bg)
+        }
+        scroll.addView(root)
+
+        val headerRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        headerRow.addView(TextView(this).apply {
+            text = "CASAMBI BRIDGE // v0.3.0"
+            textSize = 21f
+            setTextColor(leaf)
+            setTypeface(Typeface.MONOSPACE, Typeface.BOLD)
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        })
+        headerRow.addView(Button(this).apply {
+            text = "FORCE STOP"
+            textSize = 9f
+            setTextColor(Color.WHITE)
+            setTypeface(Typeface.MONOSPACE, Typeface.BOLD)
+            setBackgroundColor(Color.rgb(60, 0, 90))
+            setOnClickListener {
+                startService(Intent(this@MainActivity, CasambiBridgeService::class.java).apply { action = CasambiBridgeService.ACTION_STOP })
+                finishAndRemoveTask()
+                ui.postDelayed({ Process.killProcess(Process.myPid()) }, 250)
+            }
+        })
+        root.addView(headerRow)
+        root.addView(TextView(this).apply {
+            text = "NEON CANOPY CONTROL CENTER"
+            textSize = 12f
+            setTextColor(textMuted)
+            setTypeface(Typeface.MONOSPACE, Typeface.BOLD)
+            setPadding(0, 0, 0, 12)
+        })
+
+        val tabBar = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setPadding(0, 0, 0, 10)
+        }
+        root.addView(tabBar)
+
+        fun page(): LinearLayout = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            visibility = View.GONE
+        }
+        val homePage = page()
+        val controlPage = page()
+        val settingsPage = page()
+        val advancedPage = page()
+        val logsPage = page()
+        val pages = listOf(homePage, controlPage, settingsPage, advancedPage, logsPage)
+        pages.forEach { root.addView(it) }
+        var currentPage: LinearLayout = homePage
+
+        fun showPage(target: LinearLayout) {
+            pages.forEach { it.visibility = if (it == target) View.VISIBLE else View.GONE }
+        }
+
+        fun tab(text: String, target: LinearLayout): Button = Button(this).apply {
+            this.text = text
+            textSize = 8f
+            setTypeface(Typeface.MONOSPACE, Typeface.BOLD)
+            setTextColor(Color.rgb(0, 18, 8))
+            setBackgroundColor(leaf)
+            setPadding(2, 2, 2, 2)
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            setOnClickListener { showPage(target) }
+        }
+        tabBar.addView(tab("HOME", homePage))
+        tabBar.addView(tab("CTRL", controlPage))
+        tabBar.addView(tab("SET", settingsPage))
+        tabBar.addView(tab("ADV", advancedPage))
+        tabBar.addView(tab("LOG", logsPage))
+        showPage(homePage)
+
+        fun card(title: String): LinearLayout {
+            val box = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(16, 14, 16, 14)
+                setBackgroundColor(panel)
+            }
+            box.addView(TextView(this).apply {
+                text = title.uppercase()
+                textSize = 13f
+                setTextColor(cyan)
+                setTypeface(Typeface.MONOSPACE, Typeface.BOLD)
+            })
+            currentPage.addView(box)
+            addGap(currentPage, 12)
+            return box
+        }
+
+        fun label(text: String) = TextView(this).apply {
+            this.text = text.uppercase()
+            textSize = 10f
+            setTextColor(lime)
+            setTypeface(Typeface.MONOSPACE, Typeface.BOLD)
+            setPadding(0, 10, 0, 2)
+        }
+
+        fun field(parent: LinearLayout, label: String, value: String, password: Boolean = false): EditText {
+            parent.addView(label(label))
+            return EditText(this).apply {
+                setText(value)
+                textSize = 13f
+                setSingleLine(true)
+                setTextColor(textMain)
+                setHintTextColor(textMuted)
+                setBackgroundColor(Color.rgb(2, 10, 7))
+                setPadding(12, 8, 12, 8)
+                if (password) inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
+                parent.addView(this)
+            }
+        }
+
+        fun button(text: String) = Button(this).apply {
+            this.text = text
+            textSize = 10f
+            setTypeface(Typeface.MONOSPACE, Typeface.BOLD)
+            setTextColor(Color.rgb(0, 18, 8))
+            setBackgroundColor(leaf)
+        }
+
+        fun led(): TextView = TextView(this).apply {
+            text = "●"
+            textSize = 22f
+            setTextColor(darkLed)
+            setTypeface(Typeface.MONOSPACE, Typeface.BOLD)
+            setPadding(0, 0, 8, 0)
+        }
+
+        fun signalRow(parent: LinearLayout, title: String): TextView {
+            val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+            val l = led()
+            row.addView(l)
+            row.addView(TextView(this).apply {
+                text = title
+                textSize = 12f
+                setTextColor(textMain)
+                setTypeface(Typeface.MONOSPACE, Typeface.BOLD)
+                setPadding(3, 6, 0, 0)
+            })
+            parent.addView(row)
+            return l
+        }
+
+        currentPage = homePage
+        val statusCard = card("Signal Canopy")
+        val sigGrid1 = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        statusCard.addView(sigGrid1)
+        bleRxLed = signalRow(sigGrid1, "Casambi Bluetooth RX")
+        bleTxLed = signalRow(sigGrid1, "Casambi Bluetooth TX")
+        mqttInLed = signalRow(sigGrid1, "MQTT Eingang")
+        mqttOutLed = signalRow(sigGrid1, "MQTT Ausgang")
+        smbLed = signalRow(sigGrid1, "SMB Logging aktiv")
+        webLed = signalRow(sigGrid1, "Webserver aktiv")
+        tcpLed = signalRow(sigGrid1, "TCP Logstream aktiv")
+        statusText = TextView(this).apply {
+            text = "Live-Log in der App entfernt. Diagnose laeuft primaer ueber SMB."
+            textSize = 11f
+            setTextColor(textMuted)
+            setTypeface(Typeface.MONOSPACE, Typeface.NORMAL)
+            setPadding(0, 10, 0, 0)
+        }
+        statusCard.addView(statusText)
+        currentPage = logsPage
+        val logCard = card("Current Log")
+        logCard.addView(TextView(this).apply {
+            text = "Live Status wird oben im HOME-Tab gezeigt. Ausfuehrliche Logs laufen ueber SMB/TCP."
+            textSize = 11f
+            setTextColor(textMuted)
+            setTypeface(Typeface.MONOSPACE, Typeface.NORMAL)
+            setPadding(0, 10, 0, 0)
+        })
+        currentPage = homePage
+
+        val controlCard = card("Unit 1 Control")
+        val lampLed = signalRow(controlCard, "Unit 1 Connected / Online")
+        val lampValueText = TextView(this).apply {
+            text = "Status: ${RuntimeStatus.lastState} ${RuntimeStatus.lastBrightness}"
+            textSize = 12f
+            setTextColor(textMuted)
+            setTypeface(Typeface.MONOSPACE, Typeface.BOLD)
+            setPadding(0, 4, 0, 10)
+        }
+        controlCard.addView(lampValueText)
+        val quickRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        controlCard.addView(quickRow)
+        val onBtn = button("ON")
+        val offBtn = button("OFF")
+        val p40 = button("40%")
+        listOf(onBtn, offBtn, p40).forEach { quickRow.addView(it) }
+        val seek = SeekBar(this).apply { max = 255; progress = RuntimeStatus.lastBrightness.coerceIn(0,255) }
+        controlCard.addView(label("Auto Apply Brightness"))
+        controlCard.addView(seek)
+        lampLedRef = lampLed
+        lampValueRef = lampValueText
+        setLed(lampLed, RuntimeStatus.lastOnline)
+
+        val roadmapCard = card("System Status")
+        roadmapCard.addView(TextView(this).apply {
+            text = "SCENES: App/Web/MQTT aktiv • LIGHT: App/Web/MQTT aktiv"
+            textSize = 12f
+            setTextColor(lime)
+            setTypeface(Typeface.MONOSPACE, Typeface.BOLD)
+            setPadding(0, 6, 0, 4)
+        })
+        roadmapCard.addView(TextView(this).apply {
+            text = "KEY: API-managed • DISCOVERY: BLE Manufacturer 963 + CASA UUID • NEXT: UI polish"
+            textSize = 11f
+            setTextColor(textMuted)
+            setTypeface(Typeface.MONOSPACE, Typeface.NORMAL)
+            setPadding(0, 4, 0, 4)
+        })
+        val roadmapRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        val scenePreview = button("SCENES SOON")
+        val groupPreview = button("GROUPS SOON")
+        scenePreview.isEnabled = false
+        groupPreview.isEnabled = false
+        roadmapRow.addView(scenePreview)
+        roadmapRow.addView(groupPreview)
+        roadmapCard.addView(roadmapRow)
+
+        val scenesCard = card("Scenes")
+        val scenesContainer = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        scenesCard.addView(scenesContainer)
+        fun sceneCommand(sceneId: Int, sceneName: String) {
+            statusText.text = "Scene wird geschaltet: $sceneName"
+            startService(Intent(this, CasambiBridgeService::class.java).apply {
+                action = CasambiBridgeService.ACTION_SCENE
+                putExtra(CasambiBridgeService.EXTRA_SCENE_ID, sceneId)
+                putExtra(CasambiBridgeService.EXTRA_SCENE_NAME, sceneName)
+            })
+        }
+        fun refreshSceneButtons() {
+            scenesContainer.removeAllViews()
+            val scenes = SceneStore.loadScenes(this)
+            if (scenes.isEmpty()) {
+                scenesContainer.addView(TextView(this).apply {
+                    text = "Noch keine Szenen gespeichert. Bitte FETCH API ausführen."
+                    textSize = 11f
+                    setTextColor(textMuted)
+                    setTypeface(Typeface.MONOSPACE, Typeface.NORMAL)
+                })
+            } else {
+                scenes.forEach { scene ->
+                    val b = button("SCENE: ${scene.name}")
+                    b.setOnClickListener { sceneCommand(scene.id, scene.name) }
+                    scenesContainer.addView(b)
+                }
+            }
+        }
+        sceneRefresh = { refreshSceneButtons() }
+        refreshSceneButtons()
+
+        currentPage = settingsPage
+        val configCard = card("Config Matrix")
+        val mac = field(configCard, "Casambi BLE MAC", c.casambiMac)
+        val network = field(configCard, "Casambi Netzwerkname optional", c.casambiNetworkName)
+        val casambiPass = field(configCard, "Casambi Passwort optional", c.casambiPassword, true)
+        currentPage = advancedPage
+        val advancedKeyCard = card("Advanced Key / Legacy")
+        advancedKeyCard.addView(TextView(this).apply {
+            text = "Nur Fallback. Normalerweise API Fetch verwenden."
+            textSize = 10f
+            setTextColor(textMuted)
+            setTypeface(Typeface.MONOSPACE, Typeface.NORMAL)
+            setPadding(0, 4, 0, 6)
+        })
+        val protocol = field(advancedKeyCard, "Casambi Protocol Version", c.casambiProtocolVersion.toString())
+        val keyId = field(advancedKeyCard, "Casambi Key ID API Fallback", c.casambiKeyId.toString())
+        val keyHex = field(advancedKeyCard, "Casambi Key HEX API Fallback", c.casambiKeyHex, true)
+        val mqttHost = field(configCard, "MQTT Host/IP", c.mqttHost)
+        val mqttPort = field(configCard, "MQTT Port", c.mqttPort.toString())
+        val mqttUser = field(configCard, "MQTT User", c.mqttUser)
+        val mqttPass = field(configCard, "MQTT Passwort", c.mqttPassword, true)
+        val baseTopic = field(configCard, "MQTT Base Topic", c.baseTopic)
+        val discoveryPrefix = field(configCard, "HA Discovery Prefix", c.discoveryPrefix)
+        val smbServer = field(configCard, "SMB Server/IP", c.smbServer)
+        val smbShare = field(configCard, "SMB Freigabe", c.smbShare)
+        val smbPath = field(configCard, "SMB Pfad", c.smbPath)
+        val smbDomain = field(configCard, "SMB Domain/Workgroup", c.smbDomain)
+        val smbUser = field(configCard, "SMB User", c.smbUser)
+        val smbPassword = field(configCard, "SMB Passwort", c.smbPassword, true)
+        val tcpPort = field(configCard, "TCP Logstream Port", c.tcpLogPort.toString())
+        val webPort = field(configCard, "Webinterface Port", c.webInterfacePort.toString())
+
+        fun switchRow(parent: LinearLayout, text: String, checked: Boolean): Pair<Switch, TextView> {
+            val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+            val l = led()
+            val sw = Switch(this).apply {
+                this.text = text
+                textSize = 12f
+                setTextColor(textMain)
+                setTypeface(Typeface.MONOSPACE, Typeface.BOLD)
+                isChecked = checked
+            }
+            row.addView(l)
+            row.addView(sw)
+            parent.addView(row)
+            return sw to l
+        }
+
+        currentPage = settingsPage
+        val toggleCard = card("System Toggles")
+        val (smbSwitch, smbSwitchLed) = switchRow(toggleCard, "SMB Logging", c.smbDebugEnabled)
+        val (webSwitch, webSwitchLed) = switchRow(toggleCard, "Web Server", c.webInterfaceEnabled)
+        val (tcpSwitch, tcpSwitchLed) = switchRow(toggleCard, "TCP Logstream", c.tcpLogEnabled)
+        val (autoApiSwitch, autoApiSwitchLed) = switchRow(toggleCard, "Auto API Fetch", c.autoApiFetchEnabled)
+
+        currentPage = controlPage
+        val actionCard = card("Actions")
+        val row1 = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        val start = button("START")
+        val stop = button("STOP")
+        val mqttTest = button("MQTT")
+        row1.addView(start); row1.addView(stop); row1.addView(mqttTest)
+        actionCard.addView(row1)
+        val row2 = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        val save = button("SAVE")
+        val ble = button("BLE")
+        val backup = button("BACKUP SMB")
+        val restore = button("RESTORE SMB")
+        val fetchApi = button("FETCH API")
+        val scanBt = button("SCAN CASAMBI")
+        row2.addView(save); row2.addView(ble); row2.addView(backup); row2.addView(restore); row2.addView(fetchApi); row2.addView(scanBt)
+        actionCard.addView(row2)
+
+        setContentView(scroll)
+
+        fun currentConfig() = BridgeConfig(
+            casambiMac = mac.text.toString().trim(),
+            casambiNetworkName = network.text.toString(),
+            casambiPassword = casambiPass.text.toString(),
+            casambiProtocolVersion = protocol.text.toString().toIntOrNull() ?: 11,
+            casambiKeyId = keyId.text.toString().toIntOrNull() ?: 2,
+            casambiKeyHex = keyHex.text.toString().trim(),
+            mqttHost = mqttHost.text.toString().trim(),
+            mqttPort = mqttPort.text.toString().toIntOrNull() ?: 1883,
+            mqttUser = mqttUser.text.toString(),
+            mqttPassword = mqttPass.text.toString(),
+            baseTopic = baseTopic.text.toString().ifBlank { "casambi_bridge" },
+            discoveryPrefix = discoveryPrefix.text.toString().ifBlank { "homeassistant" },
+            smbDebugEnabled = smbSwitch.isChecked,
+            smbServer = smbServer.text.toString().trim(),
+            smbShare = smbShare.text.toString().trim(),
+            smbPath = smbPath.text.toString().trim().ifBlank { "casambi_debug" },
+            smbDomain = smbDomain.text.toString().trim(),
+            smbUser = smbUser.text.toString(),
+            smbPassword = smbPassword.text.toString(),
+            tcpLogEnabled = tcpSwitch.isChecked,
+            tcpLogPort = tcpPort.text.toString().toIntOrNull() ?: 5555,
+            webInterfaceEnabled = webSwitch.isChecked,
+            webInterfacePort = webPort.text.toString().toIntOrNull() ?: 8080,
+            autoApiFetchEnabled = autoApiSwitch.isChecked
+        )
+
+        fun setSwitchLeds() {
+            setLed(smbLed, smbSwitch.isChecked)
+            setLed(webLed, webSwitch.isChecked)
+            setLed(tcpLed, tcpSwitch.isChecked)
+            setLed(smbSwitchLed, smbSwitch.isChecked)
+            setLed(webSwitchLed, webSwitch.isChecked)
+            setLed(tcpSwitchLed, tcpSwitch.isChecked)
+            setLed(autoApiSwitchLed, autoApiSwitch.isChecked)
+        }
+        setSwitchLeds()
+        smbSwitch.setOnCheckedChangeListener { _, _ -> setSwitchLeds() }
+        webSwitch.setOnCheckedChangeListener { _, _ -> setSwitchLeds() }
+        tcpSwitch.setOnCheckedChangeListener { _, _ -> setSwitchLeds() }
+        autoApiSwitch.setOnCheckedChangeListener { _, _ -> setSwitchLeds() }
+
+        fun scanBluetoothForCasambi() {
+            statusText.text = "Bluetooth Scan nach Casambi gestartet"
+            LogBus.log("Bluetooth Scan nach Casambi gestartet: manufacturer=$casambiManufacturerId service=$casambiServiceUuid")
+            val manager = getSystemService(BluetoothManager::class.java)
+            val scanner = manager?.adapter?.bluetoothLeScanner
+            if (scanner == null) {
+                LogBus.log("Bluetooth Scan Fehler: Scanner nicht verfuegbar")
+                statusText.text = "Bluetooth Scanner nicht verfuegbar"
+                return
+            }
+            val callback = object : ScanCallback() {
+                override fun onScanResult(callbackType: Int, result: ScanResult) {
+                    val record = result.scanRecord
+                    val device = result.device
+                    val name = try { device.name ?: record?.deviceName ?: "" } catch (_: SecurityException) { record?.deviceName ?: "" }
+                    val address = device.address ?: ""
+                    val manufacturerMatch = record?.manufacturerSpecificData?.get(casambiManufacturerId) != null
+                    val serviceMatch = record?.serviceUuids?.any { it.uuid == casambiServiceUuid } == true
+                    val currentMacMatches = address.replace(":", "").equals(mac.text.toString().replace(":", ""), true)
+                    val nameFallback = name.contains("casambi", true)
+                    if ((manufacturerMatch && serviceMatch) || currentMacMatches || nameFallback) {
+                        try { scanner.stopScan(this) } catch (_: Throwable) {}
+                        mac.setText(address)
+                        statusText.text = "Casambi gefunden: $name $address"
+                        LogBus.log("Bluetooth Scan Treffer: name=$name address=$address rssi=${result.rssi} manufacturer963=$manufacturerMatch casaUuid=$serviceMatch")
+                        flash(bleRxLed)
+                    } else if (manufacturerMatch || serviceMatch) {
+                        LogBus.log("Bluetooth Scan Kandidat ignoriert: name=$name address=$address manufacturer963=$manufacturerMatch casaUuid=$serviceMatch")
+                    }
+                }
+                override fun onScanFailed(errorCode: Int) {
+                    LogBus.log("Bluetooth Scan Fehler code=$errorCode")
+                    statusText.text = "Bluetooth Scan Fehler code=$errorCode"
+                }
+            }
+            try {
+                scanner.startScan(null, ScanSettings.Builder().setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY).build(), callback)
+                ui.postDelayed({
+                    try { scanner.stopScan(callback) } catch (_: Throwable) {}
+                    LogBus.log("Bluetooth Scan beendet")
+                }, 9000)
+            } catch (t: Throwable) {
+                LogBus.log("Bluetooth Scan Fehler: ${t.message}")
+                statusText.text = "Bluetooth Scan Fehler"
+            }
+        }
+
+        fun applyConfig(x: BridgeConfig) {
+            mac.setText(x.casambiMac); network.setText(x.casambiNetworkName); casambiPass.setText(x.casambiPassword)
+            protocol.setText(x.casambiProtocolVersion.toString()); keyId.setText(x.casambiKeyId.toString()); keyHex.setText(x.casambiKeyHex)
+            mqttHost.setText(x.mqttHost); mqttPort.setText(x.mqttPort.toString()); mqttUser.setText(x.mqttUser); mqttPass.setText(x.mqttPassword)
+            baseTopic.setText(x.baseTopic); discoveryPrefix.setText(x.discoveryPrefix)
+            smbServer.setText(x.smbServer); smbShare.setText(x.smbShare); smbPath.setText(x.smbPath); smbDomain.setText(x.smbDomain); smbUser.setText(x.smbUser); smbPassword.setText(x.smbPassword)
+            tcpPort.setText(x.tcpLogPort.toString()); webPort.setText(x.webInterfacePort.toString())
+            smbSwitch.isChecked = x.smbDebugEnabled; webSwitch.isChecked = x.webInterfaceEnabled; tcpSwitch.isChecked = x.tcpLogEnabled; autoApiSwitch.isChecked = x.autoApiFetchEnabled
+            setSwitchLeds()
+        }
+
+        fun saveNow() {
+            val cfg = currentConfig()
+            ConfigStore.save(this, cfg)
+            DebugExporter.configure(cfg)
+            TcpLogServer.configure(cfg)
+            WebControlServer.configure(this, cfg)
+            statusText.text = "Konfiguration gespeichert"
+            LogBus.log("Konfiguration gespeichert")
+        }
+
+        fun command(state: String, brightness: Int? = null) {
+            saveNow()
+            startService(Intent(this, CasambiBridgeService::class.java).apply {
+                action = CasambiBridgeService.ACTION_COMMAND
+                putExtra(CasambiBridgeService.EXTRA_STATE, state)
+                if (brightness != null) putExtra(CasambiBridgeService.EXTRA_BRIGHTNESS, brightness)
+            })
+        }
+
+        onBtn.setOnClickListener { command("ON", null) }
+        offBtn.setOnClickListener { command("OFF", null) }
+        p40.setOnClickListener { command("ON", 102) }
+        seek.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+            private var pending: Runnable? = null
+            override fun onProgressChanged(bar: SeekBar?, progress: Int, fromUser: Boolean) {
+                if (!fromUser) return
+                pending?.let { ui.removeCallbacks(it) }
+                pending = Runnable { command(if (progress <= 0) "OFF" else "ON", progress.coerceIn(0,255)) }
+                ui.postDelayed(pending!!, 450)
+            }
+            override fun onStartTrackingTouch(bar: SeekBar?) {}
+            override fun onStopTrackingTouch(bar: SeekBar?) {
+                val progress = bar?.progress ?: 0
+                pending?.let { ui.removeCallbacks(it) }
+                command(if (progress <= 0) "OFF" else "ON", progress.coerceIn(0,255))
+            }
+        })
+
+        save.setOnClickListener { saveNow() }
+        start.setOnClickListener { saveNow(); startService(Intent(this, CasambiBridgeService::class.java).apply { action = CasambiBridgeService.ACTION_START }) }
+        stop.setOnClickListener { startService(Intent(this, CasambiBridgeService::class.java).apply { action = CasambiBridgeService.ACTION_STOP }) }
+        mqttTest.setOnClickListener { saveNow(); MqttBridge(currentConfig(), LogBus::log).also { it.connectSafe(); it.publishTest(); it.disconnect() } }
+        ble.setOnClickListener { saveNow(); startService(Intent(this, CasambiBridgeService::class.java).apply { action = CasambiBridgeService.ACTION_BLE_TEST }) }
+        backup.setOnClickListener {
+            val cfg = currentConfig()
+            Thread {
+                try {
+                    val url = ConfigBackup.exportToSmb(cfg)
+                    runOnUiThread { statusText.text = "Config Backup gespeichert"; LogBus.log("Config Backup gespeichert: $url") }
+                } catch (t: Throwable) {
+                    runOnUiThread { statusText.text = "Config Backup Fehler"; LogBus.log("Config Backup Fehler: ${t.message}") }
+                }
+            }.start()
+        }
+        restore.setOnClickListener {
+            val cfg = currentConfig()
+            Thread {
+                try {
+                    val restored = ConfigBackup.restoreFromSmb(cfg)
+                    ConfigStore.save(this, restored)
+                    runOnUiThread { applyConfig(restored); statusText.text = "Config Restore erfolgreich"; LogBus.log("Config Restore erfolgreich") }
+                } catch (t: Throwable) {
+                    runOnUiThread { statusText.text = "Config Restore Fehler"; LogBus.log("Config Restore Fehler: ${t.message}") }
+                }
+            }.start()
+        }
+
+        scanBt.setOnClickListener { scanBluetoothForCasambi() }
+
+        if (mac.text.toString().isBlank()) ui.postDelayed({ scanBluetoothForCasambi() }, 900)
+
+        fetchApi.setOnClickListener {
+            val cfg = currentConfig()
+            statusText.text = "Casambi API Fetch gestartet"
+            LogBus.log("Casambi API Fetch gestartet")
+            Thread {
+                try {
+                    val result = CasambiCloudApi.fetch(cfg)
+                    val updated = cfg.copy(
+                        casambiNetworkName = result.networkName ?: cfg.casambiNetworkName,
+                        casambiProtocolVersion = result.protocolVersion ?: cfg.casambiProtocolVersion,
+                        casambiKeyId = result.keyId ?: cfg.casambiKeyId,
+                        casambiKeyHex = result.keyHex ?: cfg.casambiKeyHex
+                    )
+                    ConfigStore.save(this, updated)
+                    SceneStore.saveScenes(this, result.scenes)
+                    SceneStore.saveGroups(this, result.groups)
+                    val sceneNames = result.scenes.joinToString { "${it.first}:${it.second}" }
+                    val groupNames = result.groups.joinToString { "${it.first}:${it.second}" }
+                    runOnUiThread {
+                        applyConfig(updated)
+                        refreshSceneButtons()
+                        statusText.text = "API Fetch OK: ${result.rawSummary}"
+                        LogBus.log("Casambi API Fetch OK: ${result.rawSummary}")
+                        if (sceneNames.isNotBlank()) LogBus.log("Scenes: $sceneNames")
+                        if (groupNames.isNotBlank()) LogBus.log("Groups: $groupNames")
+                        if (result.keyHex != null) LogBus.log("KeyStore ueber API geladen und lokal gespeichert")
+                        LogBus.log("API Fetch: Bridge wird mit aktualisiertem Key neu gestartet")
+                        startService(Intent(this, CasambiBridgeService::class.java).apply { action = CasambiBridgeService.ACTION_START })
+                    }
+                } catch (t: Throwable) {
+                    runOnUiThread {
+                        statusText.text = "API Fetch Fehler"
+                        LogBus.log("Casambi API Fetch Fehler: ${t.message}")
+                    }
+                }
+            }.start()
+        }
+
+        ui.postDelayed({
+            saveNow()
+            statusText.text = "Auto-Start: Bridge wird gestartet"
+            startService(Intent(this, CasambiBridgeService::class.java).apply { action = CasambiBridgeService.ACTION_START })
+        }, 650)
+    }
+
+    private fun addGap(parent: LinearLayout, height: Int) {
+        parent.addView(View(this).apply { layoutParams = LinearLayout.LayoutParams(1, height) })
+    }
+
+    private fun lampValueTextSafe(): TextView? = lampValueRef
+
+    private fun setLedSafeLamp() {
+        lampLedRef?.let { setLed(it, RuntimeStatus.lastOnline) }
+    }
+
+    private fun setLed(led: TextView, on: Boolean) {
+        led.setTextColor(if (on) ps2Green else darkLed)
+    }
+
+    private fun flash(led: TextView) {
+        val colors = listOf(ps2Blue, ps2Purple, ps2Green, ps2Blue)
+        colors.forEachIndexed { index, color ->
+            ui.postDelayed({ led.setTextColor(color) }, (index * 70L) + Random.nextLong(0, 35))
+        }
+        ui.postDelayed({ led.setTextColor(darkLed) }, 520 + Random.nextLong(0, 120))
+    }
+
+    override fun onResume() {
+        super.onResume()
+        LogBus.addListener(logListener)
+    }
+
+    override fun onPause() {
+        super.onPause()
+        LogBus.removeListener(logListener)
+    }
+
+    private fun requestPermissionsIfNeeded() {
+        val permissions = mutableListOf(Manifest.permission.ACCESS_FINE_LOCATION)
+        if (android.os.Build.VERSION.SDK_INT >= 31) {
+            permissions += Manifest.permission.BLUETOOTH_SCAN
+            permissions += Manifest.permission.BLUETOOTH_CONNECT
+        }
+        val missing = permissions.filter { ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED }
+        if (missing.isNotEmpty()) ActivityCompat.requestPermissions(this, missing.toTypedArray(), 100)
+    }
+}
