@@ -6,6 +6,10 @@ import android.bluetooth.le.ScanCallback
 import android.bluetooth.le.ScanResult
 import android.bluetooth.le.ScanSettings
 import android.content.Intent
+import android.content.Context
+import android.net.wifi.WifiManager
+import android.net.nsd.NsdManager
+import android.net.nsd.NsdServiceInfo
 import android.content.pm.PackageManager
 import android.graphics.Color
 import android.graphics.Typeface
@@ -45,6 +49,15 @@ import de.pascal.casambibridge.bridge.TcpLogServer
 import de.pascal.casambibridge.bridge.WebControlServer
 import kotlin.random.Random
 import java.util.UUID
+import java.net.InetAddress
+import java.net.InetSocketAddress
+import java.net.Socket
+import java.net.NetworkInterface
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import jcifs.smb.SmbFile
+import jcifs.smb.SmbFileOutputStream
 
 class MainActivity : AppCompatActivity() {
     private val casambiManufacturerId = 963
@@ -62,6 +75,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var smbLed: TextView
     private lateinit var webLed: TextView
     private lateinit var tcpLed: TextView
+    private lateinit var autoStartLed: TextView
     private lateinit var directLed: TextView
     private lateinit var mdnsLed: TextView
     private var lampLedRef: TextView? = null
@@ -127,7 +141,7 @@ class MainActivity : AppCompatActivity() {
 
         val headerBlock = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         headerBlock.addView(TextView(this).apply {
-            text = "🌴 CASAMBI JUNGLE\n// v0.7.6"
+            text = "🌴 CASAMBI JUNGLE\n// v0.7.7"
             textSize = 20f
             setTextColor(leaf)
             setTypeface(Typeface.MONOSPACE, Typeface.BOLD)
@@ -367,6 +381,7 @@ class MainActivity : AppCompatActivity() {
         webLed = signalRow(sigRowSystem, "Web")
         smbLed = signalRow(sigRowSystem, "💾 SMB")
         tcpLed = signalRow(sigRowSystem, "📡 TCP")
+        autoStartLed = signalRow(sigRowSystem, "Auto")
         mqttStatusLed = signalRow(sigRowMqtt, "MQTT")
         mqttInLed = signalRow(sigRowMqtt, "MQTT IN")
         mqttOutLed = signalRow(sigRowMqtt, "MQTT OUT")
@@ -615,6 +630,69 @@ class MainActivity : AppCompatActivity() {
         actionRow(restore, dashboardExport)
         actionRow(dashboardDirectExport, spacer)
 
+
+        currentPage = advancedPage
+        val scanToolsCard = card("Scan Tools")
+        scanToolsCard.addView(TextView(this).apply {
+            text = "Netzwerk-, mDNS-, Bluetooth- und WLAN-Scanner. Ergebnisse koennen per SMB exportiert werden."
+            textSize = 10f
+            setTextColor(textMuted)
+            setTypeface(Typeface.MONOSPACE, Typeface.NORMAL)
+            setPadding(0, 6, 0, 8)
+        })
+        val netRange = field(scanToolsCard, "Network Range CIDR leer = aktuelles /24", "")
+        val netFilter = field(scanToolsCard, "Network Filter Name/IP/Port", "")
+        val netBtnRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        val scanIpButton = actionGridButton("SCAN IP")
+        val scanMdnsButton = actionGridButton("SCAN mDNS")
+        netBtnRow.addView(scanIpButton)
+        netBtnRow.addView(scanMdnsButton)
+        scanToolsCard.addView(netBtnRow)
+        val exportNetButton = button("EXPORT NETWORK SCAN SMB")
+        scanToolsCard.addView(exportNetButton)
+        val networkResultText = TextView(this).apply {
+            text = "Noch kein Network Scan."
+            textSize = 9f
+            setTextColor(textMuted)
+            setTypeface(Typeface.MONOSPACE, Typeface.NORMAL)
+            setPadding(0, 8, 0, 8)
+        }
+        scanToolsCard.addView(networkResultText)
+
+        val btToolsCard = card("Bluetooth Scanner")
+        val btFilter = field(btToolsCard, "Bluetooth Filter Name/MAC", "")
+        val btRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        val scanBtAllButton = actionGridButton("SCAN BT ALL")
+        val exportBtButton = actionGridButton("EXPORT BT")
+        btRow.addView(scanBtAllButton)
+        btRow.addView(exportBtButton)
+        btToolsCard.addView(btRow)
+        val bluetoothResultText = TextView(this).apply {
+            text = "Noch kein Bluetooth Scan."
+            textSize = 9f
+            setTextColor(textMuted)
+            setTypeface(Typeface.MONOSPACE, Typeface.NORMAL)
+            setPadding(0, 8, 0, 8)
+        }
+        btToolsCard.addView(bluetoothResultText)
+
+        val wifiToolsCard = card("WiFi Scanner")
+        val wifiFilter = field(wifiToolsCard, "WiFi Filter SSID/BSSID", "")
+        val wifiRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        val scanWifiButton = actionGridButton("SCAN WIFI")
+        val exportWifiButton = actionGridButton("EXPORT WIFI")
+        wifiRow.addView(scanWifiButton)
+        wifiRow.addView(exportWifiButton)
+        wifiToolsCard.addView(wifiRow)
+        val wifiResultText = TextView(this).apply {
+            text = "Noch kein WiFi Scan."
+            textSize = 9f
+            setTextColor(textMuted)
+            setTypeface(Typeface.MONOSPACE, Typeface.NORMAL)
+            setPadding(0, 8, 0, 8)
+        }
+        wifiToolsCard.addView(wifiResultText)
+
         setContentView(scroll)
 
         data class DiscoveredCasambiDevice(
@@ -660,6 +738,156 @@ class MainActivity : AppCompatActivity() {
             returnAppPackage = selectedReturnAppPackage
         )
 
+
+        var lastNetworkScanText = ""
+        var lastBluetoothScanText = ""
+        var lastWifiScanText = ""
+        fun currentSubnet24(): String {
+            val ip = runCatching {
+                NetworkInterface.getNetworkInterfaces().toList()
+                    .flatMap { it.inetAddresses.toList() }
+                    .filterIsInstance<java.net.Inet4Address>()
+                    .firstOrNull { !it.isLoopbackAddress && !it.hostAddress.startsWith("169.254") }
+                    ?.hostAddress
+            }.getOrNull() ?: "192.168.1.1"
+            return ip.substringBeforeLast('.', "192.168.1") + ".0/24"
+        }
+        fun simplePortOpen(host: String, port: Int, timeoutMs: Int = 170): Boolean = runCatching {
+            Socket().use { socket -> socket.connect(InetSocketAddress(host, port), timeoutMs) }
+            true
+        }.getOrDefault(false)
+        fun exportScanToSmb(prefix: String, content: String) {
+            val cfg = currentConfig()
+            Thread {
+                try {
+                    val ctx = DebugExporter.smbContext(cfg)
+                    val dir = DebugExporter.smbDir(cfg)
+                    SmbFile(dir, ctx).use { if (!it.exists()) it.mkdirs() }
+                    val stamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
+                    val url = dir + "${prefix}_${stamp}.txt"
+                    SmbFileOutputStream(SmbFile(url, ctx), false).use { it.write(content.toByteArray(Charsets.UTF_8)) }
+                    runOnUiThread { statusText.text = "Scan Export gespeichert: $url"; LogBus.log("Scan Export gespeichert: $url") }
+                } catch (t: Throwable) {
+                    runOnUiThread { statusText.text = "Scan Export Fehler"; LogBus.log("Scan Export Fehler: ${t.message}") }
+                }
+            }.start()
+        }
+        fun scanIpNetwork() {
+            val input = netRange.text.toString().trim().ifBlank { currentSubnet24() }
+            val filter = netFilter.text.toString().trim().lowercase()
+            networkResultText.text = "IP Scan laeuft: $input ..."
+            LogBus.log("Network Scanner: IP Scan gestartet range=$input")
+            Thread {
+                val base = input.substringBefore('/').substringBeforeLast('.', "192.168.1")
+                val ports = listOf(22, 80, 443, 445, 1883, 5555, 8080, 8123)
+                val rows = mutableListOf<String>()
+                for (i in 1..254) {
+                    val ip = "$base.$i"
+                    try {
+                        val addr = InetAddress.getByName(ip)
+                        val open = ports.filter { simplePortOpen(ip, it) }
+                        val reachable = open.isNotEmpty() || runCatching { addr.isReachable(230) }.getOrDefault(false)
+                        if (reachable) {
+                            val name = runCatching { addr.canonicalHostName }.getOrDefault("")
+                            val line = "$ip  name=${if (name == ip) "-" else name}  ports=${if (open.isEmpty()) "-" else open.joinToString(",")}"
+                            if (filter.isBlank() || line.lowercase().contains(filter)) rows += line
+                            if (rows.size % 5 == 0) runOnUiThread { networkResultText.text = rows.joinToString("\n").ifBlank { "Suche..." } }
+                        }
+                    } catch (_: Throwable) {}
+                }
+                val result = "Network IP Scan $input\n" + (rows.sorted().joinToString("\n").ifBlank { "Keine Treffer" })
+                lastNetworkScanText = result
+                runOnUiThread { networkResultText.text = result; LogBus.log("Network Scanner: IP Scan fertig Treffer=${rows.size}") }
+            }.start()
+        }
+        fun scanMdnsServices() {
+            networkResultText.text = "mDNS/Zeroconf Scan laeuft..."
+            LogBus.log("Network Scanner: mDNS Scan gestartet")
+            val manager = getSystemService(Context.NSD_SERVICE) as? NsdManager ?: return
+            val types = listOf("_casambi-jungle._tcp.", "_home-assistant._tcp.", "_http._tcp.", "_mqtt._tcp.", "_workstation._tcp.", "_googlecast._tcp.", "_hap._tcp.")
+            val results = linkedSetOf<String>()
+            val listeners = mutableListOf<NsdManager.DiscoveryListener>()
+            fun render(finalText: Boolean = false) {
+                val txt = "mDNS/Zeroconf Scan\n" + results.sorted().joinToString("\n").ifBlank { if (finalText) "Keine Treffer" else "Suche..." }
+                lastNetworkScanText = txt
+                runOnUiThread { networkResultText.text = txt }
+            }
+            types.forEach { type ->
+                val listener = object : NsdManager.DiscoveryListener {
+                    override fun onDiscoveryStarted(regType: String) {}
+                    override fun onServiceFound(service: NsdServiceInfo) {
+                        runCatching {
+                            manager.resolveService(service, object : NsdManager.ResolveListener {
+                                override fun onResolveFailed(serviceInfo: NsdServiceInfo, errorCode: Int) {
+                                    results += "${service.serviceName}  type=${service.serviceType}  resolveError=$errorCode"
+                                    render(false)
+                                }
+                                override fun onServiceResolved(serviceInfo: NsdServiceInfo) {
+                                    val host = serviceInfo.host?.hostAddress ?: "?"
+                                    val attrs = if (android.os.Build.VERSION.SDK_INT >= 21) serviceInfo.attributes.map { (k, v) -> "$k=${String(v)}" }.joinToString(" ") else ""
+                                    results += "${serviceInfo.serviceName}  type=${serviceInfo.serviceType}  host=$host:${serviceInfo.port}  $attrs"
+                                    render(false)
+                                }
+                            })
+                        }
+                    }
+                    override fun onServiceLost(service: NsdServiceInfo) {}
+                    override fun onDiscoveryStopped(serviceType: String) {}
+                    override fun onStartDiscoveryFailed(serviceType: String, errorCode: Int) { results += "$serviceType startError=$errorCode"; render(false); runCatching { manager.stopServiceDiscovery(this) } }
+                    override fun onStopDiscoveryFailed(serviceType: String, errorCode: Int) { runCatching { manager.stopServiceDiscovery(this) } }
+                }
+                listeners += listener
+                runCatching { manager.discoverServices(type, NsdManager.PROTOCOL_DNS_SD, listener) }
+            }
+            ui.postDelayed({ listeners.forEach { runCatching { manager.stopServiceDiscovery(it) } }; render(true); LogBus.log("Network Scanner: mDNS Scan fertig Treffer=${results.size}") }, 8000)
+        }
+        fun scanBluetoothAll() {
+            val filter = btFilter.text.toString().trim().lowercase()
+            bluetoothResultText.text = "Bluetooth Scan laeuft..."
+            LogBus.log("Bluetooth Scanner: Scan all gestartet")
+            val scanner = getSystemService(BluetoothManager::class.java)?.adapter?.bluetoothLeScanner
+            if (scanner == null) { bluetoothResultText.text = "Bluetooth Scanner nicht verfuegbar"; return }
+            val found = linkedMapOf<String, String>()
+            val callback = object : ScanCallback() {
+                override fun onScanResult(callbackType: Int, result: ScanResult) {
+                    val record = result.scanRecord
+                    val name = runCatching { result.device.name ?: record?.deviceName ?: "" }.getOrDefault(record?.deviceName ?: "")
+                    val address = result.device.address ?: "?"
+                    val line = "rssi=${result.rssi.toString().padStart(4)}  ${name.ifBlank { "-" }}  $address"
+                    if (filter.isBlank() || line.lowercase().contains(filter)) found[address] = line
+                    val sorted = found.values.sortedBy { it.substringAfter("rssi=").substringBefore(" ").trim().toIntOrNull() ?: 0 }.reversed()
+                    lastBluetoothScanText = "Bluetooth Scan\n" + sorted.joinToString("\n")
+                    runOnUiThread { bluetoothResultText.text = lastBluetoothScanText }
+                }
+                override fun onScanFailed(errorCode: Int) { runOnUiThread { bluetoothResultText.text = "Bluetooth Scan Fehler code=$errorCode" } }
+            }
+            try {
+                scanner.startScan(null, ScanSettings.Builder().setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY).build(), callback)
+                ui.postDelayed({ runCatching { scanner.stopScan(callback) }; LogBus.log("Bluetooth Scanner: Scan all fertig Treffer=${found.size}") }, 9000)
+            } catch (t: Throwable) { bluetoothResultText.text = "Bluetooth Scan Fehler: ${t.message}" }
+        }
+        @Suppress("DEPRECATION")
+        fun scanWifiSignals() {
+            val filter = wifiFilter.text.toString().trim().lowercase()
+            val wifi = applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager
+            if (wifi == null) { wifiResultText.text = "WiFi Manager nicht verfuegbar"; return }
+            wifiResultText.text = "WiFi Scan laeuft..."
+            LogBus.log("WiFi Scanner: Scan gestartet")
+            runCatching { wifi.startScan() }
+            ui.postDelayed({
+                val rows = runCatching { wifi.scanResults }.getOrDefault(emptyList()).map { r ->
+                    val ssid = (r.SSID ?: "").ifBlank { "<hidden>" }
+                    val line = "rssi=${r.level.toString().padStart(4)}  ssid=$ssid  bssid=${r.BSSID}  freq=${r.frequency}  caps=${r.capabilities}"
+                    line
+                }.filter { filter.isBlank() || it.lowercase().contains(filter) }.sortedByDescending { it.substringAfter("rssi=").substringBefore(" ").trim().toIntOrNull() ?: -999 }
+                val grouped = rows.groupBy { it.substringAfter("ssid=").substringBefore("  bssid=") }
+                    .flatMap { (ssid, items) -> listOf("SSID: $ssid (${items.size})") + items.map { "  $it" } }
+                lastWifiScanText = "WiFi Scan\n" + grouped.joinToString("\n").ifBlank { "Keine Treffer oder Berechtigung fehlt" }
+                wifiResultText.text = lastWifiScanText
+                LogBus.log("WiFi Scanner: Scan fertig Treffer=${rows.size}")
+            }, 2500)
+        }
+
         fun setSwitchLeds() {
             val mqttVisible = mqttModeSwitch.isChecked && mqttHost.text.toString().isNotBlank()
             mqttMonitorVisible = mqttVisible
@@ -680,6 +908,7 @@ class MainActivity : AppCompatActivity() {
             setLed(directModeSwitchLed, directModeSwitch.isChecked, cyan)
             setLed(networkDiscoverySwitchLed, networkDiscoverySwitch.isChecked, lime)
             setLed(autoStartSwitchLed, autoStartSwitch.isChecked, amber)
+            setLed(autoStartLed, autoStartSwitch.isChecked, amber)
             setLed(returnAppIconSwitchLed, returnAppIconSwitch.isChecked, ps2Purple)
             setLed(directLed, directModeSwitch.isChecked, cyan)
             setLed(mdnsLed, networkDiscoverySwitch.isChecked && directModeSwitch.isChecked, lime)
@@ -977,6 +1206,14 @@ class MainActivity : AppCompatActivity() {
             LogBus.log("Setup Reset: Casambi Config, KeyStore und Szenen lokal geloescht")
         }
         setupAddFetch.setOnClickListener { fetchApi.performClick() }
+
+        scanIpButton.setOnClickListener { scanIpNetwork() }
+        scanMdnsButton.setOnClickListener { scanMdnsServices() }
+        exportNetButton.setOnClickListener { exportScanToSmb("network_scan", lastNetworkScanText.ifBlank { networkResultText.text.toString() }) }
+        scanBtAllButton.setOnClickListener { scanBluetoothAll() }
+        exportBtButton.setOnClickListener { exportScanToSmb("bluetooth_scan", lastBluetoothScanText.ifBlank { bluetoothResultText.text.toString() }) }
+        scanWifiButton.setOnClickListener { scanWifiSignals() }
+        exportWifiButton.setOnClickListener { exportScanToSmb("wifi_scan", lastWifiScanText.ifBlank { wifiResultText.text.toString() }) }
 
         if (mac.text.toString().isBlank()) ui.postDelayed({ scanBluetoothForCasambi() }, 900)
 
