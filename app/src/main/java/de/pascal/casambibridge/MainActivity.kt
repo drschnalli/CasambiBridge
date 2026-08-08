@@ -7,6 +7,8 @@ import android.bluetooth.le.ScanResult
 import android.bluetooth.le.ScanSettings
 import android.content.Intent
 import android.content.Context
+import android.content.BroadcastReceiver
+import android.content.IntentFilter
 import android.net.wifi.WifiManager
 import android.net.nsd.NsdManager
 import android.net.nsd.NsdServiceInfo
@@ -142,7 +144,7 @@ class MainActivity : AppCompatActivity() {
 
         val headerBlock = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         headerBlock.addView(TextView(this).apply {
-            text = "🌴 CASAMBI JUNGLE\n// v0.7.9"
+            text = "🌴 CASAMBI JUNGLE\n// v0.8.0"
             textSize = 20f
             setTextColor(leaf)
             setTypeface(Typeface.MONOSPACE, Typeface.BOLD)
@@ -161,6 +163,7 @@ class MainActivity : AppCompatActivity() {
             setPadding(4, 8, 4, 8)
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply { setMargins(3, 0, 3, 0) }
         }
+        val menuButton = topButton("☰ MENU", Color.rgb(4, 88, 98))
         val backgroundButton = topButton("BACKGROUND", Color.rgb(0, 84, 112))
         val returnAppButton = topButton("RETURN APP", Color.rgb(0, 112, 82))
         val forceStopButton = topButton("FORCE STOP", Color.rgb(78, 0, 100))
@@ -184,6 +187,7 @@ class MainActivity : AppCompatActivity() {
             finishAndRemoveTask()
             ui.postDelayed({ Process.killProcess(Process.myPid()) }, 250)
         }
+        topButtonRow.addView(menuButton)
         topButtonRow.addView(backgroundButton)
         topButtonRow.addView(returnAppButton)
         topButtonRow.addView(forceStopButton)
@@ -208,6 +212,12 @@ class MainActivity : AppCompatActivity() {
             setPadding(0, 0, 0, 10)
             setBackgroundColor(Color.rgb(2, 12, 8))
         }
+        val sideMenu = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            visibility = View.GONE
+            setPadding(14, 14, 14, 14)
+            setBackgroundColor(Color.rgb(4, 32, 24))
+        }
         // Tabs are added below the pages so they stay out of the way on small screens.
 
         fun page(): LinearLayout = LinearLayout(this).apply {
@@ -220,6 +230,7 @@ class MainActivity : AppCompatActivity() {
         val settingsPage = page()
         val advancedPage = page()
         val pages = listOf(homePage, setupPage, controlPage, settingsPage, advancedPage)
+        root.addView(sideMenu)
         pages.forEach { root.addView(it) }
         root.addView(tabBar)
         var currentPage: LinearLayout = homePage
@@ -245,6 +256,24 @@ class MainActivity : AppCompatActivity() {
             pages.forEach { it.visibility = if (it == target) View.VISIBLE else View.GONE }
             tabButtons.forEach { (page, button) -> styleTab(button, page == target) }
         }
+
+        fun menuItem(label: String, target: LinearLayout): Button = button(label).apply {
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { setMargins(0, 4, 0, 4) }
+            setOnClickListener { showPage(target); sideMenu.visibility = View.GONE }
+        }
+        sideMenu.addView(TextView(this).apply {
+            text = "☰ CASAMBI JUNGLE MENU"
+            textSize = 14f
+            setTextColor(leaf)
+            setTypeface(Typeface.MONOSPACE, Typeface.BOLD)
+            setPadding(0, 0, 0, 8)
+        })
+        sideMenu.addView(menuItem("HOME / MONITOR", homePage))
+        sideMenu.addView(menuItem("SETUP", setupPage))
+        sideMenu.addView(menuItem("CONTROL", controlPage))
+        sideMenu.addView(menuItem("SETTINGS", settingsPage))
+        sideMenu.addView(menuItem("TOOLS / ADVANCED", advancedPage))
+        menuButton.setOnClickListener { sideMenu.visibility = if (sideMenu.visibility == View.VISIBLE) View.GONE else View.VISIBLE }
 
         fun tab(text: String, target: LinearLayout): Button = Button(this).apply {
             this.tag = text
@@ -578,15 +607,20 @@ class MainActivity : AppCompatActivity() {
         }
         val requestScanPermissionsButton = button("REQUEST SCANNER PERMISSIONS")
         val openLocationSettingsButton = button("OPEN LOCATION SETTINGS")
+        val openWifiSettingsButton = button("OPEN WIFI SETTINGS")
         permissionsCard.addView(permissionStatusText)
         permissionsCard.addView(requestScanPermissionsButton)
         permissionsCard.addView(openLocationSettingsButton)
+        permissionsCard.addView(openWifiSettingsButton)
         fun scannerPermissionStatus(): String {
             val fine = ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
             val btScan = android.os.Build.VERSION.SDK_INT < 31 || ContextCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_SCAN) == PackageManager.PERMISSION_GRANTED
             val btConnect = android.os.Build.VERSION.SDK_INT < 31 || ContextCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED
+            val coarse = ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
+            val changeWifi = ContextCompat.checkSelfPermission(this, Manifest.permission.CHANGE_WIFI_STATE) == PackageManager.PERMISSION_GRANTED
             val wifiNearby = android.os.Build.VERSION.SDK_INT < 33 || ContextCompat.checkSelfPermission(this, Manifest.permission.NEARBY_WIFI_DEVICES) == PackageManager.PERMISSION_GRANTED
-            return "Location=$fine  BLE_SCAN=$btScan  BLE_CONNECT=$btConnect  NEARBY_WIFI=$wifiNearby\nWiFi Scan braucht je nach Android-Version Standortberechtigung und aktivierte Standortdienste."
+            val locationEnabled = runCatching { android.provider.Settings.Secure.getInt(contentResolver, android.provider.Settings.Secure.LOCATION_MODE) != android.provider.Settings.Secure.LOCATION_MODE_OFF }.getOrDefault(false)
+            return "Location=$fine/$coarse  BLE_SCAN=$btScan  BLE_CONNECT=$btConnect  WIFI_CHANGE=$changeWifi  NEARBY_WIFI=$wifiNearby  LOC_ON=$locationEnabled\nAndroid 8.1: Legacy WiFi Scan nutzt BroadcastReceiver + cached scanResults."
         }
         fun refreshPermissionStatus() { permissionStatusText.text = scannerPermissionStatus() }
         refreshPermissionStatus()
@@ -604,6 +638,11 @@ class MainActivity : AppCompatActivity() {
             runCatching { startActivity(Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS)) }
             statusText.text = "Android Standortdienste öffnen"
             LogBus.log("Scanner Permissions: Standortdienste Einstellungen geöffnet")
+        }
+        openWifiSettingsButton.setOnClickListener {
+            runCatching { startActivity(Intent(Settings.ACTION_WIFI_SETTINGS)) }
+            statusText.text = "Android WLAN Einstellungen öffnen"
+            LogBus.log("Scanner Permissions: WLAN Einstellungen geöffnet")
         }
 
         fun switchRow(parent: LinearLayout, text: String, checked: Boolean): Pair<Switch, TextView> {
@@ -683,16 +722,20 @@ class MainActivity : AppCompatActivity() {
         val netCustomPorts = field(scanToolsCard, "Custom Ports komma-separiert", "22,80,443,445,1883,5555,8080,8123")
         val netBtnRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         val scanIpButton = actionGridButton("SCAN IP")
+        val scanHostsButton = actionGridButton("SCAN HOSTS")
         val stopIpButton = actionGridButton("STOP IP")
         netBtnRow.addView(scanIpButton)
-        netBtnRow.addView(stopIpButton)
+        netBtnRow.addView(scanHostsButton)
         scanToolsCard.addView(netBtnRow)
         val netBtnRow2 = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        netBtnRow2.addView(stopIpButton)
         val scanMdnsButton = actionGridButton("SCAN mDNS")
-        val stopMdnsButton = actionGridButton("STOP mDNS")
         netBtnRow2.addView(scanMdnsButton)
-        netBtnRow2.addView(stopMdnsButton)
         scanToolsCard.addView(netBtnRow2)
+        val netBtnRow3 = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        val stopMdnsButton = actionGridButton("STOP mDNS")
+        netBtnRow3.addView(stopMdnsButton)
+        scanToolsCard.addView(netBtnRow3)
         val exportNetButton = button("EXPORT NETWORK SCAN SMB")
         scanToolsCard.addView(exportNetButton)
         val networkResultText = TextView(this).apply {
@@ -969,28 +1012,49 @@ class MainActivity : AppCompatActivity() {
             } catch (t: Throwable) { bluetoothResultText.text = "Bluetooth Scan Fehler: ${t.message}" }
         }
         @Suppress("DEPRECATION")
+        fun renderWifiRows(rowsRaw: List<android.net.wifi.ScanResult>, filter: String) {
+            val rows = rowsRaw.map { r ->
+                val ssid = (r.SSID ?: "").ifBlank { "<hidden>" }
+                "rssi=${r.level.toString().padStart(4)}  ssid=$ssid  bssid=${r.BSSID}  freq=${r.frequency}  caps=${r.capabilities}"
+            }.filter { filter.isBlank() || it.lowercase().contains(filter) }.sortedByDescending { it.substringAfter("rssi=").substringBefore(" ").trim().toIntOrNull() ?: -999 }
+            val grouped = rows.groupBy { it.substringAfter("ssid=").substringBefore("  bssid=") }
+                .flatMap { (ssid, items) -> listOf("SSID: $ssid (${items.size})") + items.map { "  $it" } }
+            lastWifiScanText = "WiFi Scan  Treffer=${rows.size}\n" + grouped.joinToString("\n").ifBlank { "Keine Treffer. Android 8.1 Tipp: WLAN-Einstellungen öffnen, Standortdienste aktivieren, danach erneut scannen.\n" + scannerPermissionStatus() }
+            rememberSession(wifiSessions, lastWifiScanText)
+            wifiResultText.text = lastWifiScanText
+            LogBus.log("WiFi Scanner: Scan fertig Treffer=${rows.size}")
+        }
+        @Suppress("DEPRECATION")
         fun scanWifiSignals() {
             stopWifiScan = false
             refreshPermissionStatus()
             val filter = wifiFilter.text.toString().trim().lowercase()
             val wifi = applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager
             if (wifi == null) { wifiResultText.text = "WiFi Manager nicht verfuegbar"; return }
-            wifiResultText.text = "WiFi Scan laeuft...\n" + scannerPermissionStatus()
-            LogBus.log("WiFi Scanner: Scan gestartet")
-            runCatching { wifi.startScan() }
+            wifiResultText.text = "WiFi Legacy Scan gestartet...\n" + scannerPermissionStatus()
+            LogBus.log("WiFi Scanner: Legacy Broadcast Scan gestartet")
+            val scanReceiver = object : BroadcastReceiver() {
+                override fun onReceive(context: Context?, intent: Intent?) {
+                    runCatching { unregisterReceiver(this) }
+                    if (stopWifiScan) { wifiResultText.text = "WiFi Scan gestoppt"; return }
+                    val success = intent?.getBooleanExtra(WifiManager.EXTRA_RESULTS_UPDATED, false) ?: false
+                    val results = runCatching { wifi.scanResults }.getOrDefault(emptyList())
+                    LogBus.log("WiFi Scanner: Broadcast success=$success cached=${results.size}")
+                    renderWifiRows(results, filter)
+                }
+            }
+            runCatching { registerReceiver(scanReceiver, IntentFilter(WifiManager.SCAN_RESULTS_AVAILABLE_ACTION)) }
+            val startOk = runCatching { wifi.startScan() }.getOrDefault(false)
+            val cached = runCatching { wifi.scanResults }.getOrDefault(emptyList())
+            wifiResultText.text = "WiFi Scan angefordert startScan=$startOk cached=${cached.size}\n" + scannerPermissionStatus()
+            if (cached.isNotEmpty()) renderWifiRows(cached, filter)
             ui.postDelayed({
-                if (stopWifiScan) { wifiResultText.text = "WiFi Scan gestoppt"; return@postDelayed }
-                val rows = runCatching { wifi.scanResults }.getOrDefault(emptyList()).map { r ->
-                    val ssid = (r.SSID ?: "").ifBlank { "<hidden>" }
-                    "rssi=${r.level.toString().padStart(4)}  ssid=$ssid  bssid=${r.BSSID}  freq=${r.frequency}  caps=${r.capabilities}"
-                }.filter { filter.isBlank() || it.lowercase().contains(filter) }.sortedByDescending { it.substringAfter("rssi=").substringBefore(" ").trim().toIntOrNull() ?: -999 }
-                val grouped = rows.groupBy { it.substringAfter("ssid=").substringBefore("  bssid=") }
-                    .flatMap { (ssid, items) -> listOf("SSID: $ssid (${items.size})") + items.map { "  $it" } }
-                lastWifiScanText = "WiFi Scan  Treffer=${rows.size}\n" + grouped.joinToString("\n").ifBlank { "Keine Treffer. Wenn alle Rechte true sind: Android Standortdienste/WLAN-Scan aktivieren oder WiFi Einstellungen einmal öffnen.\n" + scannerPermissionStatus() }
-                rememberSession(wifiSessions, lastWifiScanText)
-                wifiResultText.text = lastWifiScanText
-                LogBus.log("WiFi Scanner: Scan fertig Treffer=${rows.size}")
-            }, 2500)
+                runCatching { unregisterReceiver(scanReceiver) }
+                if (!stopWifiScan && lastWifiScanText.isBlank()) {
+                    val results = runCatching { wifi.scanResults }.getOrDefault(emptyList())
+                    renderWifiRows(results, filter)
+                }
+            }, 4500)
         }
         fun setSwitchLeds() {
             val mqttVisible = mqttModeSwitch.isChecked && mqttHost.text.toString().isNotBlank()
@@ -1312,6 +1376,7 @@ class MainActivity : AppCompatActivity() {
         setupAddFetch.setOnClickListener { fetchApi.performClick() }
 
         scanIpButton.setOnClickListener { scanIpNetwork() }
+        scanHostsButton.setOnClickListener { netPortMode.setText("none"); scanIpNetwork() }
         stopIpButton.setOnClickListener { stopIpScan = true; networkResultText.text = networkResultText.text.toString() + "\nSTOP angefordert" }
         scanMdnsButton.setOnClickListener { scanMdnsServices() }
         stopMdnsButton.setOnClickListener { stopMdnsScan = true; activeMdnsListeners.forEach { runCatching { activeMdnsManager?.stopServiceDiscovery(it) } }; activeMdnsListeners.clear(); networkResultText.text = networkResultText.text.toString() + "\nmDNS STOP" }
@@ -1413,7 +1478,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun requestPermissionsIfNeeded() {
-        val permissions = mutableListOf(Manifest.permission.ACCESS_FINE_LOCATION)
+        val permissions = mutableListOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION, Manifest.permission.CHANGE_WIFI_STATE)
         if (android.os.Build.VERSION.SDK_INT >= 31) {
             permissions += Manifest.permission.BLUETOOTH_SCAN
             permissions += Manifest.permission.BLUETOOTH_CONNECT
