@@ -155,7 +155,7 @@ class MqttBridge(
 
     fun publishTest() = publish(
         topic("test"),
-        JSONObject().put("bridge", "casambi").put("version", "0.5.3").toString(),
+        JSONObject().put("bridge", "casambi").put("version", "0.5.4").toString(),
         false
     )
 
@@ -240,10 +240,10 @@ class MqttBridge(
     }
 
     fun publishDiscoveryForDiagnostics() {
-        log("MQTT Diagnostics Discovery in v0.5.3 voruebergehend deaktiviert")
+        log("MQTT Diagnostics Discovery in v0.5.4 voruebergehend deaktiviert")
     }
     fun publishDiagnosticStates() {
-        // v0.5.3: disabled to avoid MQTT publish storms on Android/Paho.
+        // v0.5.4: disabled to avoid MQTT publish storms on Android/Paho.
         return
     }
     fun publishBridgeStatus(bridge: String, ble: String) {
@@ -311,7 +311,7 @@ class MqttBridge(
         .put("name", "Android Casambi Bridge")
         .put("manufacturer", "Pascal/Copilot")
         .put("model", "Android BLE Bridge")
-        .put("sw_version", "0.5.3")
+        .put("sw_version", "0.5.4")
 
     private fun publish(topicName: String, payload: String, retained: Boolean) {
         val mqttClient = client ?: return

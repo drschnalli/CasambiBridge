@@ -13,6 +13,8 @@ object RuntimeStatus {
     @Volatile var bleConnected: Boolean = false
     @Volatile var cloudConnected: Boolean = false
     @Volatile var bridgeState: String = "stopped"
+    @Volatile var lastSceneId: Int = -1
+    @Volatile var lastSceneName: String = ""
 
     fun markBridgeStarted() {
         bridgeStartMillis = System.currentTimeMillis()
@@ -22,6 +24,16 @@ object RuntimeStatus {
     fun markSync() {
         lastSyncMillis = System.currentTimeMillis()
         cloudConnected = true
+    }
+
+    fun markScene(id: Int, name: String) {
+        lastSceneId = id
+        lastSceneName = name
+    }
+
+    fun clearScene() {
+        lastSceneId = -1
+        lastSceneName = ""
     }
 
     fun update(state: String, brightness: Int, online: Boolean, raw: String) {

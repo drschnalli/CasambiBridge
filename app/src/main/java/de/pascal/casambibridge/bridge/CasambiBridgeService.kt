@@ -104,7 +104,7 @@ class CasambiBridgeService : Service() {
             it.publishDiscoveryForScenes(SceneStore.loadScenes(this))
             it.publishDiscoveryForStatusEntities()
             it.publishDiscoveryForBridgeSettings()
-            // v0.5.3: diagnostics discovery/state publishing remains disabled at startup to prevent MQTT publish storms.
+            // v0.5.4: diagnostics discovery/state publishing remains disabled at startup to prevent MQTT publish storms.
             it.publishBridgeSettingsState(config)
             it.publishBridgeStatus("online", "connecting")
             it.publishState("OFF", 0)
@@ -204,6 +204,7 @@ class CasambiBridgeService : Service() {
         val state = intent.getStringExtra(EXTRA_STATE)
         val brightness = if (intent.hasExtra(EXTRA_BRIGHTNESS)) intent.getIntExtra(EXTRA_BRIGHTNESS, -1).takeIf { it >= 0 } else null
         val command = CasambiCommand(1, state, brightness)
+        RuntimeStatus.clearScene()
         LogBus.log("App Control Command Unit 1 state=${state ?: "-"} brightness=${brightness ?: -1} effective=${command.effectiveBrightness}")
         submitOrQueue(command)
     }
@@ -216,6 +217,7 @@ class CasambiBridgeService : Service() {
             return
         }
         val command = CasambiCommand(sceneId, "ON", 255, 4, sceneName)
+        RuntimeStatus.markScene(sceneId, sceneName)
         LogBus.log("Scene Command scene=$sceneId name=$sceneName effective=${command.effectiveBrightness}")
         submitOrQueue(command)
     }
