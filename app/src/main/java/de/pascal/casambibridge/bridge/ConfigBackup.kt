@@ -26,7 +26,7 @@ object ConfigBackup {
         SmbFile(dir, ctx).use { if (!it.exists()) it.mkdirs() }
         val url = dir + FULL_FILE
         val root = JSONObject()
-            .put("version", "0.5.8")
+            .put("version", "0.5.9")
             .put("created", System.currentTimeMillis())
             .put("config", toJson(c))
             .put("scenes", infosToJson(SceneStore.loadScenes(context).map { it.id to it.name }))

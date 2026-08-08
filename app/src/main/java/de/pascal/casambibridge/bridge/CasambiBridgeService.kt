@@ -109,7 +109,7 @@ class CasambiBridgeService : Service() {
             it.publishDiscoveryForScenes(SceneStore.loadScenes(this))
             it.publishDiscoveryForStatusEntities()
             it.publishDiscoveryForBridgeSettings()
-            // v0.5.8: diagnostics discovery/state publishing remains disabled at startup to prevent MQTT publish storms.
+            // v0.5.9: diagnostics discovery/state publishing remains disabled at startup to prevent MQTT publish storms.
             it.publishHacsDiscovery(config, units)
             it.publishBridgeSettingsState(config)
             it.publishHacsDiagnostics(config)
