@@ -40,6 +40,11 @@ object ConfigStore {
         )
     }
 
+    fun lastSyncMillis(context: Context): Long = context.getSharedPreferences(PREF, Context.MODE_PRIVATE).getLong("lastApiSyncMillis", 0L)
+    fun saveLastSyncMillis(context: Context, value: Long) {
+        context.getSharedPreferences(PREF, Context.MODE_PRIVATE).edit().putLong("lastApiSyncMillis", value).apply()
+    }
+
     fun save(context: Context, c: BridgeConfig) {
         context.getSharedPreferences(PREF, Context.MODE_PRIVATE).edit()
             .putString("casambiMac", c.casambiMac)

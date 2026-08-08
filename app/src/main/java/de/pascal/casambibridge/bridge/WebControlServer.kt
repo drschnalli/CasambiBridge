@@ -211,7 +211,7 @@ object WebControlServer {
         val webUrl = localWebUrl(c)
         return JSONObject()
             .put("name", c.casambiNetworkName.ifBlank { "Casambi Jungle Bridge" })
-            .put("version", "0.7.3")
+            .put("version", "0.7.4")
             .put("mode", if (c.mqttEnabled && c.directModeEnabled) "hybrid" else if (c.directModeEnabled) "direct" else "mqtt")
             .put("mqtt_enabled", c.mqttEnabled && c.mqttHost.isNotBlank())
             .put("direct_enabled", c.directModeEnabled)
@@ -253,7 +253,10 @@ object WebControlServer {
         return if (ip.isBlank()) "" else "http://$ip:${c.webInterfacePort.coerceIn(1024, 65535)}"
     }
 
-    private fun statusJson(): String = JSONObject()
+    private fun statusJson(): String {
+        val savedLastSync = appContext?.let { ConfigStore.lastSyncMillis(it) } ?: 0L
+        if (RuntimeStatus.lastSyncMillis <= 0L && savedLastSync > 0L) RuntimeStatus.lastSyncMillis = savedLastSync
+        return JSONObject()
         .put("state", RuntimeStatus.lastState)
         .put("brightness", RuntimeStatus.lastBrightness)
         .put("online", RuntimeStatus.lastOnline)
@@ -271,10 +274,11 @@ object WebControlServer {
         .put("brightnessPct", ((RuntimeStatus.lastBrightness.coerceIn(0,255) * 100) / 255))
         .put("lastSyncText", if (RuntimeStatus.lastSyncMillis > 0L) ageText(RuntimeStatus.lastSyncMillis) else "not synced")
         .put("lastUpdateText", if (RuntimeStatus.lastUpdateMillis > 0L) ageText(RuntimeStatus.lastUpdateMillis) else "never")
-        .put("version", "0.7.3")
+        .put("version", "0.7.4")
         .put("direct", appContext?.let { ConfigStore.load(it).directModeEnabled } ?: false)
         .put("mdns", appContext?.let { ConfigStore.load(it).networkDiscoveryEnabled } ?: false)
         .toString()
+    }
 
     private fun fetchApiNow(): String {
         val ctx = appContext ?: return "No context"
@@ -295,6 +299,7 @@ object WebControlServer {
             RuntimeCounts.groupCount = result.groups.size
             RuntimeCounts.unitCount = result.units.size.coerceAtLeast(1)
             RuntimeStatus.markSync()
+            ConfigStore.saveLastSyncMillis(ctx, RuntimeStatus.lastSyncMillis)
             runCatching { DashboardExporter.exportToSmb(ctx, updated) }
             ctx.startService(Intent(ctx, CasambiBridgeService::class.java).apply { action = CasambiBridgeService.ACTION_START })
             "API Fetch OK: ${result.rawSummary}. MQTT Dashboard wurde neu erzeugt."
@@ -377,7 +382,7 @@ object WebControlServer {
         return page("Casambi Jungle", """
 <div class='hero'>
   <h1>CASAMBI JUNGLE</h1>
-  <div class='sub'>${esc(c.casambiNetworkName.ifBlank { "Bridge Control Center" })} - powered by Sambesi - v0.7.3</div>
+  <div class='sub'>${esc(c.casambiNetworkName.ifBlank { "Bridge Control Center" })} - powered by Sambesi - v0.7.4</div>
   <div class='msg'>${esc(message)}</div>
 </div>
 <div class='grid'>
@@ -407,7 +412,7 @@ object WebControlServer {
     private fun statusScript(): String = """
 let sliderBusy=false;let sliderTimer=null;let pollTimer=null;let ws=null;
 function applyLightVisual(s){const on=s.state==='ON'&&s.brightness>0;const pct=s.brightnessPct||0;const card=document.getElementById('lightCard');card.classList.toggle('on',on);card.classList.toggle('off',!on);document.getElementById('powerOrb').textContent=on?'ON':'OFF';document.getElementById('lightStateText').textContent=on?'Licht aktiv':'Licht aus';document.getElementById('brightnessText').textContent='Brightness '+pct+'%';document.getElementById('brightnessBar').style.width=pct+'%';document.getElementById('cmdOn').classList.toggle('active',on);document.getElementById('cmdOff').classList.toggle('active',!on);document.getElementById('cmd40').classList.toggle('active',on&&pct>=39&&pct<=41);if(!sliderBusy){const sl=document.getElementById('brightnessSlider');sl.value=s.brightness||0;document.getElementById('sliderValue').textContent=pct+'%';}}
-function renderStatus(s){const on=s.state==='ON'&&s.brightness>0;const pct=s.brightnessPct||0;const p=(n,v,ok)=>`<div class='pill'><span>${'$'}{n}</span><b class='${'$'}{ok?'ok':'bad'}'>${'$'}{v}</b></div>`;document.getElementById('statusGrid').innerHTML=p('Bridge',s.bridge,s.bridge==='online')+p('BLE',s.ble?'connected':'disconnected',s.ble)+p('MQTT',s.mqtt?'online':'offline',s.mqtt)+p('Cloud',s.cloud?'synced':'not synced',s.cloud)+p('Last Sync',s.lastSyncText||'not synced',s.cloud)+p('Licht',s.state+' / '+pct+'%',on)+p('Szene',s.lastSceneName||'keine',!!s.lastSceneName)+p('Last Update',s.lastUpdateText||'never',s.lastUpdateText&&s.lastUpdateText!=='never')+p('Uptime',s.uptime,true)+p('Version',s.version,true);applyLightVisual(s);document.getElementById('activeSceneName').textContent=s.lastSceneName||'keine';document.querySelectorAll('.sceneBtn').forEach(el=>el.classList.toggle('active',String(s.lastSceneId)===String(el.dataset.scene)));}
+function renderStatus(s){const on=s.state==='ON'&&s.brightness>0;const pct=s.brightnessPct||0;const p=(n,v,ok)=>`<div class='pill'><span>${'$'}{n}</span><b class='${'$'}{ok?'ok':'bad'}'>${'$'}{v}</b></div>`;document.getElementById('statusGrid').innerHTML=p('Bridge',s.bridge,s.bridge==='online')+p('BLE',s.ble?'connected':'disconnected',s.ble)+p('MQTT',s.mqtt?'online':'offline',s.mqtt)+p('Cloud',s.cloud?'synced':'not synced',s.cloud)+p('Last Sync',s.lastSyncText||'not synced',(s.lastSync||0)>0)+p('Licht',s.state+' / '+pct+'%',on)+p('Szene',s.lastSceneName||'keine',!!s.lastSceneName)+p('Last Update',s.lastUpdateText||'never',s.lastUpdateText&&s.lastUpdateText!=='never')+p('Uptime',s.uptime,true)+p('Version',s.version,true);applyLightVisual(s);document.getElementById('activeSceneName').textContent=s.lastSceneName||'keine';document.querySelectorAll('.sceneBtn').forEach(el=>el.classList.toggle('active',String(s.lastSceneId)===String(el.dataset.scene)));}
 function sendSlider(v){const url=v<=0?'/command?state=OFF':'/command?state=ON&brightness='+v;fetch(url).catch(()=>{});}
 function initSlider(){const sl=document.getElementById('brightnessSlider');if(!sl||sl.dataset.ready==='1')return;sl.dataset.ready='1';sl.addEventListener('input',()=>{sliderBusy=true;const v=parseInt(sl.value||'0');const pct=Math.round(v*100/255);document.getElementById('sliderValue').textContent=pct+'%';document.getElementById('brightnessText').textContent='Brightness '+pct+'%';document.getElementById('brightnessBar').style.width=pct+'%';clearTimeout(sliderTimer);sliderTimer=setTimeout(()=>{sendSlider(v);sliderBusy=false;},260);});sl.addEventListener('change',()=>{const v=parseInt(sl.value||'0');clearTimeout(sliderTimer);sendSlider(v);setTimeout(()=>{sliderBusy=false;refreshStatus();},450);});}
 async function refreshStatus(){try{initSlider();const r=await fetch('/status');renderStatus(await r.json());}catch(e){document.getElementById('statusGrid').innerHTML='<span class="bad">Status Fehler</span>';}}

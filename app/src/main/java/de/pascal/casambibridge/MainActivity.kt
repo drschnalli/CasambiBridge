@@ -109,6 +109,7 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         requestPermissionsIfNeeded()
         val c = ConfigStore.load(this)
+        RuntimeStatus.lastSyncMillis = ConfigStore.lastSyncMillis(this)
         selectedReturnAppPackage = c.returnAppPackage
 
         val scroll = ScrollView(this).apply { setBackgroundColor(bg) }
@@ -121,7 +122,7 @@ class MainActivity : AppCompatActivity() {
 
         val headerBlock = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         headerBlock.addView(TextView(this).apply {
-            text = "🌴 CASAMBI JUNGLE\n// v0.7.3"
+            text = "🌴 CASAMBI JUNGLE\n// v0.7.4"
             textSize = 20f
             setTextColor(leaf)
             setTypeface(Typeface.MONOSPACE, Typeface.BOLD)
@@ -957,6 +958,7 @@ class MainActivity : AppCompatActivity() {
                     SceneStore.saveGroups(this, result.groups)
                     SceneStore.saveUnits(this, result.units)
                     RuntimeStatus.markSync()
+                    ConfigStore.saveLastSyncMillis(this, RuntimeStatus.lastSyncMillis)
                     val sceneNames = result.scenes.joinToString { "${it.first}:${it.second}" }
                     val groupNames = result.groups.joinToString { "${it.first}:${it.second}" }
                     val unitNames = result.units.joinToString { "${it.first}:${it.second}" }

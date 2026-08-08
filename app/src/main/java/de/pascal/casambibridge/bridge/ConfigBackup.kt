@@ -26,8 +26,9 @@ object ConfigBackup {
         SmbFile(dir, ctx).use { if (!it.exists()) it.mkdirs() }
         val url = dir + FULL_FILE
         val root = JSONObject()
-            .put("version", "0.7.3")
+            .put("version", "0.7.4")
             .put("created", System.currentTimeMillis())
+            .put("lastApiSyncMillis", ConfigStore.lastSyncMillis(context))
             .put("config", toJson(c))
             .put("scenes", infosToJson(SceneStore.loadScenes(context).map { it.id to it.name }))
             .put("groups", infosToJson(SceneStore.loadGroups(context).map { it.id to it.name }))
@@ -49,6 +50,7 @@ object ConfigBackup {
         val text = SmbFileInputStream(SmbFile(url, ctx)).use { it.readBytes().toString(Charsets.UTF_8) }
         val root = JSONObject(text)
         val cfg = fromJson(root.optJSONObject("config") ?: root, fallback)
+        if (root.has("lastApiSyncMillis")) ConfigStore.saveLastSyncMillis(context, root.optLong("lastApiSyncMillis", 0L))
         SceneStore.saveScenes(context, jsonToInfos(root.optJSONArray("scenes")))
         SceneStore.saveGroups(context, jsonToInfos(root.optJSONArray("groups")))
         SceneStore.saveUnits(context, jsonToInfos(root.optJSONArray("units")))

@@ -67,6 +67,7 @@ class CasambiBridgeService : Service() {
         mqtt = null
 
         val config = ConfigStore.load(this)
+        RuntimeStatus.lastSyncMillis = ConfigStore.lastSyncMillis(this)
         setup(config)
         startForeground(1, notification("Starte Bridge"))
 
@@ -144,6 +145,7 @@ class CasambiBridgeService : Service() {
             RuntimeCounts.groupCount = result.groups.size
             RuntimeCounts.unitCount = result.units.size.coerceAtLeast(1)
             RuntimeStatus.markSync()
+            ConfigStore.saveLastSyncMillis(this, RuntimeStatus.lastSyncMillis)
             LogBus.log("Auto API Fetch OK: ${result.rawSummary}")
             if (result.keyHex != null) LogBus.log("Auto API Fetch: KeyStore aktualisiert")
             updated
