@@ -11,7 +11,7 @@ class BootReceiver : BroadcastReceiver() {
             val config = ConfigStore.load(context)
             if (config.autoStartEnabled) {
                 LogBus.log("Autostart: Bridge wird nach $action gestartet")
-                context.startService(Intent(context, CasambiBridgeService::class.java).apply { action = CasambiBridgeService.ACTION_START })
+                context.startService(Intent(context, CasambiBridgeService::class.java).apply { this.action = CasambiBridgeService.ACTION_START })
             }
         }
     }

@@ -514,9 +514,7 @@ class MainActivity : AppCompatActivity() {
         val appChoices = listOf(LaunchableApp("Launcher / keine Ziel-App", "")) + launchableApps
         fun updateReturnAppButtonText() {
             val label = appChoices.firstOrNull { it.packageName == selectedReturnAppPackage }?.label ?: "Launcher"
-            returnAppButton.text = if (selectedReturnAppPackage.isBlank()) "RETURN APP
-Launcher" else "RETURN APP
-$label"
+            returnAppButton.text = if (selectedReturnAppPackage.isBlank()) "RETURN APP\nLauncher" else "RETURN APP\n$label"
         }
         updateReturnAppButtonText()
         returnAppCard.addView(TextView(this).apply {
