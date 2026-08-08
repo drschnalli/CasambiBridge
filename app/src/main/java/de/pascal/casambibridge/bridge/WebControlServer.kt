@@ -143,11 +143,17 @@ object WebControlServer {
         }
     }
 
+    private fun primaryUnitName(): String {
+        val ctx = appContext ?: return "Casambi Light 1"
+        return SceneStore.loadUnits(ctx).firstOrNull()?.name ?: "Casambi Light 1"
+    }
+
     private fun statusJson(): String = JSONObject()
         .put("state", RuntimeStatus.lastState)
         .put("brightness", RuntimeStatus.lastBrightness)
         .put("online", RuntimeStatus.lastOnline)
         .put("raw", RuntimeStatus.lastRawState)
+        .put("unitName", primaryUnitName())
         .put("bridge", RuntimeStatus.bridgeState)
         .put("ble", RuntimeStatus.bleConnected)
         .put("mqtt", RuntimeStatus.mqttConnected)
@@ -160,7 +166,7 @@ object WebControlServer {
         .put("brightnessPct", ((RuntimeStatus.lastBrightness.coerceIn(0,255) * 100) / 255))
         .put("lastSyncText", if (RuntimeStatus.lastSyncMillis > 0L) ageText(RuntimeStatus.lastSyncMillis) else "not synced")
         .put("lastUpdateText", if (RuntimeStatus.lastUpdateMillis > 0L) ageText(RuntimeStatus.lastUpdateMillis) else "never")
-        .put("version", "0.5.7")
+        .put("version", "0.5.8")
         .toString()
 
     private fun fetchApiNow(): String {
@@ -253,18 +259,19 @@ object WebControlServer {
         val ctx = appContext
         val c = if (ctx != null) ConfigStore.load(ctx) else BridgeConfig()
         val scenes = if (ctx != null) SceneStore.loadScenes(ctx) else emptyList()
+        val unitName = if (ctx != null) SceneStore.loadUnits(ctx).firstOrNull()?.name ?: "Casambi Light 1" else "Casambi Light 1"
         val sceneButtons = if (scenes.isEmpty()) "<span class='muted'>Keine Szenen gespeichert</span>" else scenes.joinToString(" ") { s ->
             "<a id='scene-${s.id}' class='sceneBtn ghost' data-scene='${s.id}' href='/scene?id=${s.id}&name=${url(s.name)}'><span class='sceneDot'></span><b>${esc(s.name)}</b></a>"
         }
         return page("Casambi Jungle", """
 <div class='hero'>
   <h1>CASAMBI JUNGLE</h1>
-  <div class='sub'>${esc(c.casambiNetworkName.ifBlank { "Bridge Control Center" })} - powered by Sambesi - v0.5.7</div>
+  <div class='sub'>${esc(c.casambiNetworkName.ifBlank { "Bridge Control Center" })} - powered by Sambesi - v0.5.8</div>
   <div class='msg'>${esc(message)}</div>
 </div>
 <div class='grid'>
   <section class='card'><h2>Live Status</h2><div id='statusGrid' class='statusGrid'>Lade Status...</div><div class='wsHint'>Live Mode: <b>${if (c.webSocketLiveEnabled) "WebSocket" else "Polling"}</b></div><script>window.CASAMBI_WS=${c.webSocketLiveEnabled};</script><script>${statusScript()}</script></section>
-  <section id='lightCard' class='card lightCard off'><h2>Licht</h2><div class='powerPanel'><div id='powerOrb' class='powerOrb'>OFF</div><div class='powerMeta'><div id='lightStateText' class='stateTitle'>Licht aus</div><div id='brightnessText' class='stateSub'>Brightness 0%</div><div class='bar'><span id='brightnessBar'></span></div><div class='sliderWrap'><input id='brightnessSlider' class='jungleSlider' type='range' min='0' max='255' value='0'><div class='sliderMeta'><span>0%</span><b id='sliderValue'>0%</b><span>100%</span></div></div></div></div><div class='controlRow'><a id='cmdOn' class='cmdBtn onCmd' href='/command?state=ON'>ON</a><a id='cmdOff' class='cmdBtn offCmd active' href='/command?state=OFF'>OFF</a><a id='cmd40' class='cmdBtn dimCmd' href='/command?state=ON&brightness=102'>40%</a></div></section>
+  <section id='lightCard' class='card lightCard off'><h2>${esc(unitName)}</h2><div class='powerPanel'><div id='powerOrb' class='powerOrb'>OFF</div><div class='powerMeta'><div id='lightStateText' class='stateTitle'>Licht aus</div><div id='brightnessText' class='stateSub'>Brightness 0%</div><div class='bar'><span id='brightnessBar'></span></div><div class='sliderWrap'><input id='brightnessSlider' class='jungleSlider' type='range' min='0' max='255' value='0'><div class='sliderMeta'><span>0%</span><b id='sliderValue'>0%</b><span>100%</span></div></div></div></div><div class='controlRow'><a id='cmdOn' class='cmdBtn onCmd' href='/command?state=ON'>ON</a><a id='cmdOff' class='cmdBtn offCmd active' href='/command?state=OFF'>OFF</a><a id='cmd40' class='cmdBtn dimCmd' href='/command?state=ON&brightness=102'>40%</a></div></section>
   <section class='card sceneCard'><h2>Szenen</h2><div class='activeScene'><span>Aktive Szene</span><b id='activeSceneName'>keine</b></div><div class='controlRow'>$sceneButtons</div></section>
   <section class='card'><h2>Tools</h2><div class='controlRow'><a class='btn ghost' href='/fetch-api'>API Fetch</a><a class='btn ghost' href='/dashboard-export'>YAML neu schreiben</a><a class='btn ghost' href='/dashboard-yaml'>YAML anzeigen</a><a class='btn ghost' href='/files'>SMB Browser</a><a class='btn ghost' href='/logs'>Live Log</a><a class='btn ghost' href='/backup'>Backup SMB</a><a class='btn ghost' href='/toggle-ws'>WebSocket ${if (c.webSocketLiveEnabled) "AUS" else "EIN"}</a></div></section>
   <section class='card wide'><h2>Live Log Preview</h2><pre id='logBox'>Lade Log...</pre><script>${logScript()}</script></section>

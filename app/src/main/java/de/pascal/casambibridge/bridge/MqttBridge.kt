@@ -7,6 +7,7 @@ import org.eclipse.paho.client.mqttv3.MqttConnectOptions
 import org.eclipse.paho.client.mqttv3.MqttMessage
 import org.eclipse.paho.client.mqttv3.persist.MemoryPersistence
 import org.json.JSONObject
+import org.json.JSONArray
 import java.util.Locale
 import java.util.UUID
 import java.text.SimpleDateFormat
@@ -158,26 +159,31 @@ class MqttBridge(
 
     fun publishTest() = publish(
         topic("test"),
-        JSONObject().put("bridge", "casambi").put("version", "0.5.7").toString(),
+        JSONObject().put("bridge", "casambi").put("version", "0.5.8").toString(),
         false
     )
 
-    fun publishHacsDiscovery(c: BridgeConfig = config) {
+    fun publishHacsDiscovery(c: BridgeConfig = config, units: List<CasambiUnitInfo> = emptyList()) {
         val webUrl = if (c.webInterfaceEnabled) localWebUrl(c) else ""
+        val unitsArray = JSONArray()
+        units.forEach { unit ->
+            unitsArray.put(JSONObject().put("id", unit.id).put("name", unit.name))
+        }
         val payload = JSONObject()
             .put("name", c.casambiNetworkName.ifBlank { "Casambi Jungle Bridge" })
             .put("base_topic", c.baseTopic)
             .put("web_url", webUrl)
-            .put("version", "0.5.7")
+            .put("version", "0.5.8")
             .put("manufacturer", "Casambi Jungle")
             .put("model", "Android BLE Bridge")
+            .put("units", unitsArray)
         publish(topic("discovery"), payload.toString(), true)
         log("MQTT HACS Discovery veroeffentlicht: ${topic("discovery")}")
     }
 
     fun publishHacsDiagnostics(c: BridgeConfig = config) {
         val fmt = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.GERMANY)
-        publish(topic("diagnostics/bridge_version"), "0.5.7", true)
+        publish(topic("diagnostics/bridge_version"), "0.5.8", true)
         publish(topic("diagnostics/last_sync"), if (RuntimeStatus.lastSyncMillis > 0L) fmt.format(Date(RuntimeStatus.lastSyncMillis)) else "never", true)
         publish(topic("diagnostics/active_scene"), RuntimeStatus.lastSceneName.ifBlank { "none" }, true)
         publish(topic("diagnostics/web_interface_url"), if (c.webInterfaceEnabled) localWebUrl(c) else "disabled", true)
@@ -188,9 +194,9 @@ class MqttBridge(
         publish(topic("diagnostics/active_scene"), RuntimeStatus.lastSceneName.ifBlank { "none" }, true)
     }
 
-    fun publishDiscoveryForDemoLight() {
+    fun publishDiscoveryForDemoLight(unitName: String = "Casambi Light 1") {
         val payload = JSONObject()
-            .put("name", "Casambi Light 1")
+            .put("name", unitName)
             .put("unique_id", "casambi_bridge_light_1")
             .put("schema", "json")
             .put("state_topic", topic("light/1/state"))
@@ -198,7 +204,7 @@ class MqttBridge(
             .put("availability_topic", topic("availability"))
             .put("brightness", true)
             .put("brightness_scale", 255)
-            .put("device", deviceJson())
+            .put("device", unitDeviceJson(1, unitName))
         publish("${config.discoveryPrefix}/light/casambi_bridge/light_1/config", payload.toString(), true)
     }
 
@@ -269,10 +275,10 @@ class MqttBridge(
     }
 
     fun publishDiscoveryForDiagnostics() {
-        log("MQTT Diagnostics Discovery in v0.5.7 voruebergehend deaktiviert")
+        log("MQTT Diagnostics Discovery in v0.5.8 voruebergehend deaktiviert")
     }
     fun publishDiagnosticStates() {
-        // v0.5.7: disabled to avoid MQTT publish storms on Android/Paho.
+        // v0.5.8: disabled to avoid MQTT publish storms on Android/Paho.
         return
     }
     fun publishBridgeStatus(bridge: String, ble: String) {
@@ -315,15 +321,16 @@ class MqttBridge(
         publish(topic("settings/websocket_live/state"), if (c.webSocketLiveEnabled) "ON" else "OFF", true)
     }
 
-    fun publishState(state: String, brightness: Int) = publishLightState(1, state, brightness, false, "")
+    fun publishState(state: String, brightness: Int) = publishLightState(1, state, brightness, false, "", "Casambi Light 1")
 
-    fun publishLightState(id: Int, state: String, brightness: Int, online: Boolean, raw: String) {
+    fun publishLightState(id: Int, state: String, brightness: Int, online: Boolean, raw: String, unitName: String = "Unit $id") {
         val payload = JSONObject()
             .put("state", state)
             .put("brightness", brightness.coerceIn(0, 255))
             .put("online", online)
             .put("raw_state", raw)
             .put("unit_id", id)
+            .put("unit_name", unitName)
         publish(topic("light/$id/state"), payload.toString(), true)
         publish(topic("debug/unit/$id"), payload.toString(), false)
     }
@@ -348,12 +355,19 @@ class MqttBridge(
         return if (ip.isBlank()) "" else "http://$ip:${c.webInterfacePort.coerceIn(1024, 65535)}"
     }
 
+    private fun unitDeviceJson(id: Int, unitName: String) = JSONObject()
+        .put("identifiers", "casambi_unit_$id")
+        .put("name", unitName)
+        .put("manufacturer", "Casambi")
+        .put("model", "Casambi Unit")
+        .put("via_device", "casambi_bridge_android")
+
     private fun deviceJson() = JSONObject()
         .put("identifiers", "casambi_bridge_android")
         .put("name", "Android Casambi Bridge")
         .put("manufacturer", "Pascal/Copilot")
         .put("model", "Android BLE Bridge")
-        .put("sw_version", "0.5.7")
+        .put("sw_version", "0.5.8")
 
     private fun publish(topicName: String, payload: String, retained: Boolean) {
         val mqttClient = client ?: return

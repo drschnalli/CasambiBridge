@@ -83,6 +83,9 @@ class CasambiBridgeService : Service() {
         }
     }
 
+    private fun unitName(id: Int): String = SceneStore.loadUnits(this).firstOrNull { it.id == id }?.name ?: "Unit $id"
+    private fun primaryUnitName(): String = SceneStore.loadUnits(this).firstOrNull()?.name ?: "Casambi Light 1"
+
     private fun startBridgeRuntime(config: BridgeConfig, generation: Int) {
         if (generation != startGeneration) {
             LogBus.log("Bridge Runtime Start verworfen generation=$generation current=$startGeneration")
@@ -90,9 +93,11 @@ class CasambiBridgeService : Service() {
         }
         setup(config)
         RuntimeStatus.markBridgeStarted()
+        val units = SceneStore.loadUnits(this)
+        val firstUnitName = units.firstOrNull()?.name ?: "Casambi Light 1"
         RuntimeCounts.sceneCount = SceneStore.loadScenes(this).size
         RuntimeCounts.groupCount = SceneStore.loadGroups(this).size
-        RuntimeCounts.unitCount = SceneStore.loadUnits(this).size.coerceAtLeast(1)
+        RuntimeCounts.unitCount = units.size.coerceAtLeast(1)
         ble = createBle(config, true, generation)
         mqtt = MqttBridge(config, LogBus::log) { cmd ->
             LogBus.log("MQTT Command Callback Unit ${cmd.unitId} type=${cmd.targetType} state=${cmd.state ?: "-"} brightness=${cmd.brightness ?: -1} effective=${cmd.effectiveBrightness}")
@@ -100,12 +105,12 @@ class CasambiBridgeService : Service() {
         }.also {
             it.connectSafe()
             it.publishAvailability(true)
-            it.publishDiscoveryForDemoLight()
+            it.publishDiscoveryForDemoLight(firstUnitName)
             it.publishDiscoveryForScenes(SceneStore.loadScenes(this))
             it.publishDiscoveryForStatusEntities()
             it.publishDiscoveryForBridgeSettings()
-            // v0.5.7: diagnostics discovery/state publishing remains disabled at startup to prevent MQTT publish storms.
-            it.publishHacsDiscovery(config)
+            // v0.5.8: diagnostics discovery/state publishing remains disabled at startup to prevent MQTT publish storms.
+            it.publishHacsDiscovery(config, units)
             it.publishBridgeSettingsState(config)
             it.publishHacsDiagnostics(config)
             it.publishBridgeStatus("online", "connecting")
@@ -171,7 +176,7 @@ class CasambiBridgeService : Service() {
         TcpLogServer.configure(updated)
         WebControlServer.configure(this, updated)
         mqtt?.publishBridgeSettingsState(updated)
-        mqtt?.publishHacsDiscovery(updated)
+        mqtt?.publishHacsDiscovery(updated, SceneStore.loadUnits(this))
         mqtt?.publishHacsDiagnostics(updated)
         val label = when (command.targetType) {
             92 -> "Web Interface"
@@ -286,7 +291,7 @@ class CasambiBridgeService : Service() {
             RuntimeStatus.update(state, brightness, online, rawStateHex)
             LogBus.log("MQTT State Unit $id -> state=$state brightness=$brightness raw=$rawStateHex")
             if (withMqtt) {
-                mqtt?.publishLightState(id, state, brightness, online, rawStateHex)
+                mqtt?.publishLightState(id, state, brightness, online, rawStateHex, unitName(id))
             }
         }
     })

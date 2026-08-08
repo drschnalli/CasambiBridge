@@ -108,7 +108,7 @@ class MainActivity : AppCompatActivity() {
 
         val headerRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         headerRow.addView(TextView(this).apply {
-            text = "🌴 CASAMBI JUNGLE // v0.5.7"
+            text = "🌴 CASAMBI JUNGLE // v0.5.8"
             textSize = 21f
             setTextColor(leaf)
             setTypeface(Typeface.MONOSPACE, Typeface.BOLD)
@@ -331,7 +331,7 @@ class MainActivity : AppCompatActivity() {
         currentPage = homePage
 
         val controlCard = card("Light Control")
-        val lampLed = signalRow(controlCard, "Unit 1 Connected / Online")
+        val lampLed = signalRow(controlCard, "${primaryUnitName()} Connected / Online")
         val lampValueText = TextView(this).apply {
             text = "Status: ${RuntimeStatus.lastState} ${RuntimeStatus.lastBrightness}"
             textSize = 12f
