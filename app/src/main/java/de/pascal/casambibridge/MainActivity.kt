@@ -87,7 +87,10 @@ class MainActivity : AppCompatActivity() {
     private val logListener: (String) -> Unit = { line ->
         statusText.text = line
         lampValueTextSafe()?.let { it.text = "Status: ${RuntimeStatus.lastState} ${RuntimeStatus.lastBrightness}" }
-        if (::bleRxLed.isInitialized) setLedSafeLamp()
+        if (::bleRxLed.isInitialized) {
+            setLedSafeLamp()
+            setLed(bleConnectedLed, RuntimeStatus.bleConnected, ps2Blue)
+        }
         if (line.contains("API Fetch OK") || line.contains("Auto API Fetch OK")) ui.post { sceneRefresh?.invoke() }
         if (::mqttStatusLed.isInitialized) {
             when {
@@ -101,7 +104,7 @@ class MainActivity : AppCompatActivity() {
             (line.contains("MQTT Command Unit") || line.contains("MQTT Command Callback")) && mqttMonitorVisible -> flash(mqttInLed)
             (line.contains("MQTT State Unit") || line.contains("publish", ignoreCase = true)) && mqttMonitorVisible -> flash(mqttOutLed)
             line.contains("Direct API RX") -> flash(directRxLed)
-            line.contains("Direct API TX") || line.contains("Direct Command") -> flash(directTxLed)
+            line.contains("Direct API TX") || line.contains("Direct Command") -> { flash(directTxLed); ui.postDelayed({ setLed(directTxLed, false, lime) }, 850) }
         }
     }
 
@@ -122,7 +125,7 @@ class MainActivity : AppCompatActivity() {
 
         val headerBlock = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         headerBlock.addView(TextView(this).apply {
-            text = "🌴 CASAMBI JUNGLE\n// v0.7.4"
+            text = "🌴 CASAMBI JUNGLE\n// v0.7.5"
             textSize = 20f
             setTextColor(leaf)
             setTypeface(Typeface.MONOSPACE, Typeface.BOLD)
@@ -131,7 +134,7 @@ class MainActivity : AppCompatActivity() {
         val topButtonRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         fun topButton(label: String, bgColor: Int): Button = Button(this).apply {
             text = label
-            textSize = 8.5f
+            textSize = 7.8f
             setTextColor(Color.WHITE)
             setTypeface(Typeface.MONOSPACE, Typeface.BOLD)
             setBackgroundColor(bgColor)
@@ -357,9 +360,9 @@ class MainActivity : AppCompatActivity() {
         directRxLed = signalRow(sigRowTwo, "DIR RX")
         directTxLed = signalRow(sigRowTwo, "DIR TX")
         mdnsLed = signalRow(sigRowTwo, "mDNS")
-        smbLed = signalRow(sigRowTwo, "SMB")
+        smbLed = signalRow(sigRowTwo, "💾 SMB")
         webLed = signalRow(sigRowThree, "Web")
-        tcpLed = signalRow(sigRowThree, "TCP")
+        tcpLed = signalRow(sigRowThree, "📡 TCP")
         mqttStatusLed = signalRow(sigRowThree, "MQTT")
         mqttInLed = signalRow(sigRowThree, "MQTT IN")
         mqttOutLed = signalRow(sigRowThree, "MQTT OUT")
@@ -509,6 +512,13 @@ class MainActivity : AppCompatActivity() {
             .distinctBy { it.packageName }
             .sortedBy { it.label.lowercase() }
         val appChoices = listOf(LaunchableApp("Launcher / keine Ziel-App", "")) + launchableApps
+        fun updateReturnAppButtonText() {
+            val label = appChoices.firstOrNull { it.packageName == selectedReturnAppPackage }?.label ?: "Launcher"
+            returnAppButton.text = if (selectedReturnAppPackage.isBlank()) "RETURN APP
+Launcher" else "RETURN APP
+$label"
+        }
+        updateReturnAppButtonText()
         returnAppCard.addView(TextView(this).apply {
             text = "Ziel-App fuer RETURN APP aus installierten Launcher-Apps auswaehlen. BACKGROUND nutzt immer den Android Launcher und laesst die Bridge weiterlaufen."
             textSize = 10f
@@ -523,6 +533,7 @@ class MainActivity : AppCompatActivity() {
         val initialReturnIndex = appChoices.indexOfFirst { it.packageName == c.returnAppPackage }.takeIf { it >= 0 } ?: 0
         returnAppSpinner.setSelection(initialReturnIndex)
         selectedReturnAppPackage = appChoices[initialReturnIndex].packageName
+        updateReturnAppButtonText()
         val saveSettings = button("EINSTELLUNGEN SPEICHERN").apply { visibility = View.GONE }
         configCard.addView(saveSettings)
 
@@ -552,6 +563,7 @@ class MainActivity : AppCompatActivity() {
         val (mqttModeSwitch, mqttModeSwitchLed) = switchRow(toggleCard, "MQTT Mode", c.mqttEnabled)
         val (directModeSwitch, directModeSwitchLed) = switchRow(toggleCard, "Direct Mode", c.directModeEnabled)
         val (networkDiscoverySwitch, networkDiscoverySwitchLed) = switchRow(toggleCard, "Network Discovery / mDNS", c.networkDiscoveryEnabled)
+        val (autoStartSwitch, autoStartSwitchLed) = switchRow(toggleCard, "Autostart Bridge", c.autoStartEnabled)
 
         currentPage = controlPage
         val actionCard = card("Actions")
@@ -625,6 +637,7 @@ class MainActivity : AppCompatActivity() {
             mqttEnabled = mqttModeSwitch.isChecked,
             directModeEnabled = directModeSwitch.isChecked,
             networkDiscoveryEnabled = networkDiscoverySwitch.isChecked,
+            autoStartEnabled = autoStartSwitch.isChecked,
             returnAppPackage = selectedReturnAppPackage
         )
 
@@ -647,6 +660,7 @@ class MainActivity : AppCompatActivity() {
             setLed(mqttModeSwitchLed, mqttModeSwitch.isChecked, amber)
             setLed(directModeSwitchLed, directModeSwitch.isChecked, cyan)
             setLed(networkDiscoverySwitchLed, networkDiscoverySwitch.isChecked, lime)
+            setLed(autoStartSwitchLed, autoStartSwitch.isChecked, amber)
             setLed(directLed, directModeSwitch.isChecked, cyan)
             setLed(mdnsLed, networkDiscoverySwitch.isChecked && directModeSwitch.isChecked, lime)
             setLed(bleConnectedLed, RuntimeStatus.bleConnected, ps2Blue)
@@ -659,6 +673,7 @@ class MainActivity : AppCompatActivity() {
         returnAppSpinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
             override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
                 selectedReturnAppPackage = appChoices.getOrNull(position)?.packageName ?: ""
+                updateReturnAppButtonText()
                 markSettingsDirty()
             }
             override fun onNothingSelected(parent: AdapterView<*>?) {}
@@ -679,6 +694,7 @@ class MainActivity : AppCompatActivity() {
         mqttModeSwitch.setOnCheckedChangeListener { _, _ -> setSwitchLeds(); markSettingsDirty() }
         directModeSwitch.setOnCheckedChangeListener { _, _ -> setSwitchLeds(); markSettingsDirty() }
         networkDiscoverySwitch.setOnCheckedChangeListener { _, _ -> setSwitchLeds(); markSettingsDirty() }
+        autoStartSwitch.setOnCheckedChangeListener { _, _ -> setSwitchLeds(); markSettingsDirty() }
 
         currentPage = setupPage
         val setupCard = card("Casambi Setup")
@@ -818,8 +834,9 @@ class MainActivity : AppCompatActivity() {
             baseTopic.setText(x.baseTopic); discoveryPrefix.setText(x.discoveryPrefix)
             smbServer.setText(x.smbServer); smbShare.setText(x.smbShare); smbPath.setText(x.smbPath); smbDomain.setText(x.smbDomain); smbUser.setText(x.smbUser); smbPassword.setText(x.smbPassword)
             tcpPort.setText(x.tcpLogPort.toString()); webPort.setText(x.webInterfacePort.toString())
-            smbSwitch.isChecked = x.smbDebugEnabled; webSwitch.isChecked = x.webInterfaceEnabled; tcpSwitch.isChecked = x.tcpLogEnabled; autoApiSwitch.isChecked = x.autoApiFetchEnabled; webSocketSwitch.isChecked = x.webSocketLiveEnabled; mqttModeSwitch.isChecked = x.mqttEnabled; directModeSwitch.isChecked = x.directModeEnabled; networkDiscoverySwitch.isChecked = x.networkDiscoveryEnabled
+            smbSwitch.isChecked = x.smbDebugEnabled; webSwitch.isChecked = x.webInterfaceEnabled; tcpSwitch.isChecked = x.tcpLogEnabled; autoApiSwitch.isChecked = x.autoApiFetchEnabled; webSocketSwitch.isChecked = x.webSocketLiveEnabled; mqttModeSwitch.isChecked = x.mqttEnabled; directModeSwitch.isChecked = x.directModeEnabled; networkDiscoverySwitch.isChecked = x.networkDiscoveryEnabled; autoStartSwitch.isChecked = x.autoStartEnabled
             selectedReturnAppPackage = x.returnAppPackage
+            updateReturnAppButtonText()
             val returnIndex = appChoices.indexOfFirst { it.packageName == x.returnAppPackage }.takeIf { it >= 0 } ?: 0
             returnAppSpinner.setSelection(returnIndex)
             setSwitchLeds()

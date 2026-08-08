@@ -26,7 +26,7 @@ object ConfigBackup {
         SmbFile(dir, ctx).use { if (!it.exists()) it.mkdirs() }
         val url = dir + FULL_FILE
         val root = JSONObject()
-            .put("version", "0.7.4")
+            .put("version", "0.7.5")
             .put("created", System.currentTimeMillis())
             .put("lastApiSyncMillis", ConfigStore.lastSyncMillis(context))
             .put("config", toJson(c))
@@ -102,6 +102,7 @@ object ConfigBackup {
         .put("mqttEnabled", c.mqttEnabled)
         .put("directModeEnabled", c.directModeEnabled)
         .put("networkDiscoveryEnabled", c.networkDiscoveryEnabled)
+        .put("autoStartEnabled", c.autoStartEnabled)
         .put("returnAppPackage", c.returnAppPackage)
 
     private fun fromJson(j: JSONObject, f: BridgeConfig) = BridgeConfig(
@@ -133,6 +134,7 @@ object ConfigBackup {
         j.optBoolean("mqttEnabled", f.mqttEnabled),
         j.optBoolean("directModeEnabled", f.directModeEnabled),
         j.optBoolean("networkDiscoveryEnabled", f.networkDiscoveryEnabled),
+        j.optBoolean("autoStartEnabled", f.autoStartEnabled),
         j.optString("returnAppPackage", f.returnAppPackage)
     )
 }

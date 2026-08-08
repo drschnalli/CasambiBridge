@@ -11,5 +11,6 @@ data class BridgeConfig(
     val mqttEnabled:Boolean=true,
     val directModeEnabled:Boolean=true,
     val networkDiscoveryEnabled:Boolean=true,
+    val autoStartEnabled:Boolean=false,
     val returnAppPackage:String=""
 )
