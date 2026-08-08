@@ -89,6 +89,10 @@ class CasambiBridgeService : Service() {
             return
         }
         setup(config)
+        RuntimeStatus.markBridgeStarted()
+        RuntimeCounts.sceneCount = SceneStore.loadScenes(this).size
+        RuntimeCounts.groupCount = SceneStore.loadGroups(this).size
+        RuntimeCounts.unitCount = SceneStore.loadUnits(this).size.coerceAtLeast(1)
         ble = createBle(config, true, generation)
         mqtt = MqttBridge(config, LogBus::log) { cmd ->
             LogBus.log("MQTT Command Callback Unit ${cmd.unitId} type=${cmd.targetType} state=${cmd.state ?: "-"} brightness=${cmd.brightness ?: -1} effective=${cmd.effectiveBrightness}")
@@ -100,7 +104,9 @@ class CasambiBridgeService : Service() {
             it.publishDiscoveryForScenes(SceneStore.loadScenes(this))
             it.publishDiscoveryForStatusEntities()
             it.publishDiscoveryForBridgeSettings()
+            it.publishDiscoveryForDiagnostics()
             it.publishBridgeSettingsState(config)
+            it.publishDiagnosticStates()
             it.publishBridgeStatus("online", "connecting")
             it.publishState("OFF", 0)
         }
@@ -123,6 +129,11 @@ class CasambiBridgeService : Service() {
             ConfigStore.save(this, updated)
             SceneStore.saveScenes(this, result.scenes)
             SceneStore.saveGroups(this, result.groups)
+            SceneStore.saveUnits(this, result.units)
+            RuntimeCounts.sceneCount = result.scenes.size
+            RuntimeCounts.groupCount = result.groups.size
+            RuntimeCounts.unitCount = result.units.size.coerceAtLeast(1)
+            RuntimeStatus.markSync()
             LogBus.log("Auto API Fetch OK: ${result.rawSummary}")
             if (result.keyHex != null) LogBus.log("Auto API Fetch: KeyStore aktualisiert")
             updated
@@ -238,17 +249,21 @@ class CasambiBridgeService : Service() {
         override fun onConnected() {
             if (generation != startGeneration) return
             updateNotification(if (withMqtt) "BLE verbunden" else "BLE/Auth Test verbunden")
+            RuntimeStatus.bleConnected = true
             if (withMqtt) {
                 mqtt?.publishAvailability(true)
                 mqtt?.publishBridgeStatus("online", "connected")
+                mqtt?.publishDiagnosticStates()
             }
         }
         override fun onDisconnected() {
             if (generation != startGeneration) return
             RuntimeStatus.update("OFF", RuntimeStatus.lastBrightness, false, RuntimeStatus.lastRawState)
+            RuntimeStatus.bleConnected = false
             updateNotification("BLE getrennt")
             if (withMqtt) {
                 mqtt?.publishBridgeStatus("online", "disconnected")
+                mqtt?.publishDiagnosticStates()
                 handler.postDelayed({ if (generation == startGeneration) ble?.connect() }, 5000)
             }
         }
@@ -261,7 +276,10 @@ class CasambiBridgeService : Service() {
             val state = if (online && brightness > 0) "ON" else "OFF"
             RuntimeStatus.update(state, brightness, online, rawStateHex)
             LogBus.log("MQTT State Unit $id -> state=$state brightness=$brightness raw=$rawStateHex")
-            if (withMqtt) mqtt?.publishLightState(id, state, brightness, online, rawStateHex)
+            if (withMqtt) {
+                mqtt?.publishLightState(id, state, brightness, online, rawStateHex)
+                mqtt?.publishDiagnosticStates()
+            }
         }
     })
 
@@ -277,6 +295,9 @@ class CasambiBridgeService : Service() {
         mqtt?.disconnect()
         mqtt = null
         RuntimeStatus.update("OFF", RuntimeStatus.lastBrightness, false, RuntimeStatus.lastRawState)
+        RuntimeStatus.bridgeState = "stopped"
+        RuntimeStatus.bleConnected = false
+        RuntimeStatus.mqttConnected = false
         TcpLogServer.stop()
         WebControlServer.stop()
         stopForeground(true)

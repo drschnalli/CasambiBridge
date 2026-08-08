@@ -7,7 +7,10 @@ import org.eclipse.paho.client.mqttv3.MqttConnectOptions
 import org.eclipse.paho.client.mqttv3.MqttMessage
 import org.eclipse.paho.client.mqttv3.persist.MemoryPersistence
 import org.json.JSONObject
+import java.util.Locale
 import java.util.UUID
+import java.text.SimpleDateFormat
+import java.util.Date
 
 class MqttBridge(
     private val config: BridgeConfig,
@@ -36,10 +39,15 @@ class MqttBridge(
         mqttClient.setCallback(object : MqttCallbackExtended {
             override fun connectionLost(cause: Throwable?) {
                 synchronized(subscribeLock) { subscribed = false }
+                RuntimeStatus.mqttConnected = false
                 log("MQTT Verbindung verloren: ${cause?.message ?: "unknown"}")
             }
             override fun deliveryComplete(token: IMqttDeliveryToken?) {}
-            override fun connectComplete(reconnect: Boolean, serverURI: String?) { subscribeCommandTopics() }
+            override fun connectComplete(reconnect: Boolean, serverURI: String?) {
+                RuntimeStatus.mqttConnected = true
+                subscribeCommandTopics()
+                publishDiagnosticStates()
+            }
             override fun messageArrived(topic: String?, message: MqttMessage?) {
                 if (topic == null || message == null) return
                 handleCommand(topic, String(message.payload, Charsets.UTF_8))
@@ -53,6 +61,7 @@ class MqttBridge(
             setWill(topic("availability"), "offline".toByteArray(), 1, true)
         }
         mqttClient.connect(options).waitForCompletion(5000)
+        RuntimeStatus.mqttConnected = true
         log("MQTT verbunden $uri")
         subscribeCommandTopics()
     }
@@ -144,7 +153,7 @@ class MqttBridge(
 
     fun publishTest() = publish(
         topic("test"),
-        JSONObject().put("bridge", "casambi").put("version", "0.3.6").toString(),
+        JSONObject().put("bridge", "casambi").put("version", "0.5.0").toString(),
         false
     )
 
@@ -228,9 +237,72 @@ class MqttBridge(
         log("MQTT Status/Button Discovery veroeffentlicht")
     }
 
+    fun publishDiscoveryForDiagnostics() {
+        val dev = deviceJson()
+        fun sensor(key: String, name: String, icon: String? = null, deviceClass: String? = null) {
+            val payload = JSONObject()
+                .put("name", name)
+                .put("unique_id", "casambi_bridge_$key")
+                .put("state_topic", topic("diagnostics/$key"))
+                .put("availability_topic", topic("availability"))
+                .put("device", dev)
+            if (icon != null) payload.put("icon", icon)
+            if (deviceClass != null) payload.put("device_class", deviceClass)
+            publish("${config.discoveryPrefix}/sensor/casambi_bridge/$key/config", payload.toString(), true)
+        }
+        fun binary(key: String, name: String, icon: String? = null, deviceClass: String? = null) {
+            val payload = JSONObject()
+                .put("name", name)
+                .put("unique_id", "casambi_bridge_$key")
+                .put("state_topic", topic("diagnostics/$key"))
+                .put("payload_on", "ON")
+                .put("payload_off", "OFF")
+                .put("availability_topic", topic("availability"))
+                .put("device", dev)
+            if (icon != null) payload.put("icon", icon)
+            if (deviceClass != null) payload.put("device_class", deviceClass)
+            publish("${config.discoveryPrefix}/binary_sensor/casambi_bridge/$key/config", payload.toString(), true)
+        }
+        sensor("network_name", "Casambi Network Name", "mdi:access-point-network")
+        sensor("unit_count", "Casambi Unit Count", "mdi:lightbulb-group")
+        sensor("group_count", "Casambi Group Count", "mdi:group")
+        sensor("scene_count", "Casambi Scene Count", "mdi:palette")
+        sensor("bridge_version", "Casambi Bridge Version", "mdi:cellphone-cog")
+        sensor("bridge_uptime", "Casambi Bridge Uptime", "mdi:timer-outline")
+        sensor("last_sync", "Casambi Last API Sync", "mdi:cloud-sync")
+        sensor("last_unit_update", "Casambi Last Unit Update", "mdi:update")
+        binary("mqtt_connected", "Casambi MQTT Connected", "mdi:server-network", "connectivity")
+        binary("ble_connected", "Casambi BLE Connected", "mdi:bluetooth", "connectivity")
+        binary("cloud_connected", "Casambi Cloud Connected", "mdi:cloud-check", "connectivity")
+        binary("unit_1_online_diag", "Casambi Unit 1 Online Diagnostic", "mdi:lightbulb-on", "connectivity")
+        log("MQTT Diagnostics Discovery veroeffentlicht")
+    }
+
+    fun publishDiagnosticStates() {
+        val fmt = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.GERMANY)
+        val scenes = RuntimeCounts.sceneCount
+        val groups = RuntimeCounts.groupCount
+        val units = RuntimeCounts.unitCount
+        publish(topic("diagnostics/network_name"), config.casambiNetworkName.ifBlank { "unknown" }, true)
+        publish(topic("diagnostics/unit_count"), units.toString(), true)
+        publish(topic("diagnostics/group_count"), groups.toString(), true)
+        publish(topic("diagnostics/scene_count"), scenes.toString(), true)
+        publish(topic("diagnostics/bridge_version"), "0.5.0", true)
+        publish(topic("diagnostics/bridge_uptime"), RuntimeStatus.uptimeText(), true)
+        publish(topic("diagnostics/last_sync"), if (RuntimeStatus.lastSyncMillis > 0) fmt.format(Date(RuntimeStatus.lastSyncMillis)) else "never", true)
+        publish(topic("diagnostics/last_unit_update"), if (RuntimeStatus.lastUpdateMillis > 0) fmt.format(Date(RuntimeStatus.lastUpdateMillis)) else "never", true)
+        publish(topic("diagnostics/mqtt_connected"), if (RuntimeStatus.mqttConnected) "ON" else "OFF", true)
+        publish(topic("diagnostics/ble_connected"), if (RuntimeStatus.bleConnected) "ON" else "OFF", true)
+        publish(topic("diagnostics/cloud_connected"), if (RuntimeStatus.cloudConnected) "ON" else "OFF", true)
+        publish(topic("diagnostics/unit_1_online_diag"), if (RuntimeStatus.lastOnline) "ON" else "OFF", true)
+    }
+
     fun publishBridgeStatus(bridge: String, ble: String) {
+        RuntimeStatus.bridgeState = bridge
+        RuntimeStatus.bleConnected = ble.equals("connected", true)
         publish(topic("status/bridge"), bridge, true)
         publish(topic("status/ble"), ble, true)
+        publishDiagnosticStates()
     }
 
     fun publishDiscoveryForBridgeSettings() {
@@ -275,11 +347,14 @@ class MqttBridge(
             .put("unit_id", id)
         publish(topic("light/$id/state"), payload.toString(), true)
         publish(topic("debug/unit/$id"), payload.toString(), false)
+        publishDiagnosticStates()
     }
 
     fun publishRawNotify(data: ByteArray) = publish(topic("raw_notify"), HexUtil.bytesToHex(data), false)
 
     fun disconnect() {
+        RuntimeStatus.mqttConnected = false
+        publishDiagnosticStates()
         try { client?.disconnect()?.waitForCompletion(1500) } catch (_: Throwable) {}
         client = null
         synchronized(subscribeLock) { subscribed = false }
@@ -289,7 +364,8 @@ class MqttBridge(
         .put("identifiers", "casambi_bridge_android")
         .put("name", "Android Casambi Bridge")
         .put("manufacturer", "Pascal/Copilot")
-        .put("model", "v0.4.2")
+        .put("model", "Android BLE Bridge")
+        .put("sw_version", "0.5.0")
 
     private fun publish(topicName: String, payload: String, retained: Boolean) {
         val mqttClient = client ?: return

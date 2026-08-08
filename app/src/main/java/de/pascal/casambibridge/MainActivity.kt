@@ -31,6 +31,7 @@ import de.pascal.casambibridge.bridge.BridgeConfig
 import de.pascal.casambibridge.bridge.CasambiBridgeService
 import de.pascal.casambibridge.bridge.CasambiCloudApi
 import de.pascal.casambibridge.bridge.ConfigBackup
+import de.pascal.casambibridge.bridge.DashboardExporter
 import de.pascal.casambibridge.bridge.ConfigStore
 import de.pascal.casambibridge.bridge.DebugExporter
 import de.pascal.casambibridge.bridge.LogBus
@@ -107,7 +108,7 @@ class MainActivity : AppCompatActivity() {
 
         val headerRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         headerRow.addView(TextView(this).apply {
-            text = "🌴 CASAMBI JUNGLE // v0.4.2"
+            text = "🌴 CASAMBI JUNGLE // v0.5.0"
             textSize = 21f
             setTextColor(leaf)
             setTypeface(Typeface.MONOSPACE, Typeface.BOLD)
@@ -494,12 +495,13 @@ class MainActivity : AppCompatActivity() {
         val scanBt = actionGridButton("SCAN CASAMBI")
         val backup = actionGridButton("BACKUP SMB")
         val restore = actionGridButton("RESTORE SMB")
+        val dashboardExport = actionGridButton("DASHBOARD")
         val spacer = actionGridButton(" ").apply { isEnabled = false; setBackgroundColor(panel) }
         actionRow(start, stop)
         actionRow(fetchApi, scanBt)
         actionRow(save, mqttTest)
         actionRow(ble, backup)
-        actionRow(restore, spacer)
+        actionRow(restore, dashboardExport)
 
         setContentView(scroll)
 
@@ -761,8 +763,8 @@ class MainActivity : AppCompatActivity() {
             val cfg = currentConfig()
             Thread {
                 try {
-                    val url = ConfigBackup.exportToSmb(cfg)
-                    runOnUiThread { statusText.text = "Config Backup gespeichert"; LogBus.log("Config Backup gespeichert: $url") }
+                    val url = ConfigBackup.exportFullToSmb(this@MainActivity, cfg)
+                    runOnUiThread { statusText.text = "Full Backup gespeichert"; LogBus.log("Full Backup gespeichert: $url") }
                 } catch (t: Throwable) {
                     runOnUiThread { statusText.text = "Config Backup Fehler"; LogBus.log("Config Backup Fehler: ${t.message}") }
                 }
@@ -772,15 +774,26 @@ class MainActivity : AppCompatActivity() {
             val cfg = currentConfig()
             Thread {
                 try {
-                    val restored = ConfigBackup.restoreFromSmb(cfg)
+                    val restored = ConfigBackup.restoreFullFromSmb(this@MainActivity, cfg)
                     ConfigStore.save(this, restored)
-                    runOnUiThread { applyConfig(restored); statusText.text = "Config Restore erfolgreich"; LogBus.log("Config Restore erfolgreich") }
+                    runOnUiThread { applyConfig(restored); statusText.text = "Full Restore erfolgreich"; LogBus.log("Full Restore erfolgreich") }
                 } catch (t: Throwable) {
                     runOnUiThread { statusText.text = "Config Restore Fehler"; LogBus.log("Config Restore Fehler: ${t.message}") }
                 }
             }.start()
         }
 
+        dashboardExport.setOnClickListener {
+            val cfg = currentConfig()
+            Thread {
+                try {
+                    val url = DashboardExporter.exportToSmb(this@MainActivity, cfg)
+                    runOnUiThread { statusText.text = "Dashboard YAML exportiert"; LogBus.log("Dashboard YAML exportiert: $url") }
+                } catch (t: Throwable) {
+                    runOnUiThread { statusText.text = "Dashboard Export Fehler"; LogBus.log("Dashboard Export Fehler: ${t.message}") }
+                }
+            }.start()
+        }
         scanBt.setOnClickListener { scanBluetoothForCasambi() }
         setupScan.setOnClickListener { scanBluetoothForCasambi() }
         setupReset.setOnClickListener {
@@ -788,6 +801,7 @@ class MainActivity : AppCompatActivity() {
             ConfigStore.save(this, cfg)
             SceneStore.saveScenes(this, emptyList())
             SceneStore.saveGroups(this, emptyList())
+            SceneStore.saveUnits(this, emptyList())
             discoveredCasambiDevices.clear()
             applyConfig(cfg)
             refreshSceneButtons()
@@ -815,8 +829,11 @@ class MainActivity : AppCompatActivity() {
                     ConfigStore.save(this, updated)
                     SceneStore.saveScenes(this, result.scenes)
                     SceneStore.saveGroups(this, result.groups)
+                    SceneStore.saveUnits(this, result.units)
+                    RuntimeStatus.markSync()
                     val sceneNames = result.scenes.joinToString { "${it.first}:${it.second}" }
                     val groupNames = result.groups.joinToString { "${it.first}:${it.second}" }
+                    val unitNames = result.units.joinToString { "${it.first}:${it.second}" }
                     runOnUiThread {
                         applyConfig(updated)
                         refreshSceneButtons()
@@ -825,6 +842,7 @@ class MainActivity : AppCompatActivity() {
                         LogBus.log("Casambi API Fetch OK: ${result.rawSummary}")
                         if (sceneNames.isNotBlank()) LogBus.log("Scenes: $sceneNames")
                         if (groupNames.isNotBlank()) LogBus.log("Groups: $groupNames")
+                        if (unitNames.isNotBlank()) LogBus.log("Units: $unitNames")
                         if (result.keyHex != null) LogBus.log("KeyStore ueber API geladen und lokal gespeichert")
                         LogBus.log("API Fetch: Bridge wird mit aktualisiertem Key neu gestartet")
                         startService(Intent(this, CasambiBridgeService::class.java).apply { action = CasambiBridgeService.ACTION_START })

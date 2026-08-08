@@ -1,49 +1,101 @@
-# Casambi Bridge v0.4.2
+# Casambi Bridge v0.5.0
 
-v0.4.2 ist ein Home-Assistant-Hotfix für `Casambi Unit 1 Online`.
+v0.5.0 ist der erste grosse Schritt Richtung Discovery 2.0, Diagnose-Dashboard und spaeterer HACS-Faehigkeit.
 
-## Fix in v0.4.2
+## Neu in v0.5.0
 
-### Casambi Unit 1 Online nicht mehr `Unbekannt`
+### Diagnostics & Discovery 2.0
 
-Home Assistant zeigte den Binary Sensor `Casambi Unit 1 Online` als `Unbekannt`, obwohl die App selbst `Unit 1 Connected / Online` korrekt erkannte.
-
-Ursache:
+Neue MQTT Discovery Entitaeten fuer Home Assistant:
 
 ```text
-value_template = {{ value_json.online }}
+Casambi Network Name
+Casambi Unit Count
+Casambi Group Count
+Casambi Scene Count
+Casambi Bridge Version
+Casambi Bridge Uptime
+Casambi Last API Sync
+Casambi Last Unit Update
+Casambi MQTT Connected
+Casambi BLE Connected
+Casambi Cloud Connected
+Casambi Unit 1 Online Diagnostic
 ```
 
-Das lieferte `true`/`false`, während der MQTT Binary Sensor ohne weitere Payload-Angaben standardmäßig `ON`/`OFF` erwartet.
-
-Gefixt auf:
+### MQTT Topics
 
 ```text
-{% if value_json.online %}ON{% else %}OFF{% endif %}
+casambi_bridge/diagnostics/network_name
+casambi_bridge/diagnostics/unit_count
+casambi_bridge/diagnostics/group_count
+casambi_bridge/diagnostics/scene_count
+casambi_bridge/diagnostics/bridge_version
+casambi_bridge/diagnostics/bridge_uptime
+casambi_bridge/diagnostics/last_sync
+casambi_bridge/diagnostics/last_unit_update
+casambi_bridge/diagnostics/mqtt_connected
+casambi_bridge/diagnostics/ble_connected
+casambi_bridge/diagnostics/cloud_connected
+casambi_bridge/diagnostics/unit_1_online_diag
 ```
 
-Zusätzlich wird der Initial-State nicht mehr mit `online=true` veröffentlicht, sondern erst einmal sauber mit `online=false`, bis der echte BLE-UnitState kommt.
+### Unit Cache
 
-## Nach dem Update
+Der API Fetch speichert jetzt auch gefundene Units lokal. Dadurch kann die App Counts, Backup und Dashboard besser erzeugen.
 
-Nach Installation und Start sollte Home Assistant das retained Discovery-Config-Payload aktualisieren.
+### Dashboard Generator
 
-Falls `Casambi Unit 1 Online` weiterhin kurz unbekannt bleibt:
+Neu im CTRL-Tab:
 
-1. Bridge einmal neu starten
-2. Warten, bis `UnitState parsing fertig count=1` im Log erscheint
-3. In Home Assistant MQTT-Entity neu laden oder kurz warten
+```text
+DASHBOARD
+```
+
+Der Button erzeugt per SMB:
+
+```text
+casambi_jungle_dashboard.yaml
+```
+
+Das YAML ist fuer Mushroom Cards und Bubble Cards vorbereitet.
+
+Auch im Webinterface gibt es neue Routen:
+
+```text
+/dashboard-yaml
+/dashboard-export
+```
+
+### Full Backup / Restore
+
+Backup/Restore speichert nun nicht mehr nur die Config, sondern auch:
+
+```text
+config
+scenes
+groups
+units
+```
+
+Datei:
+
+```text
+casambi_bridge_full_backup.json
+```
 
 ## Weiterhin enthalten
 
 - Home Assistant Bridge Settings Switches
-- Casambi Web Interface Switch
+- Web Interface Switch
 - SMB Logging Switch
 - TCP Logstream Switch
 - Auto API Fetch Switch
-- 🌴 Casambi Jungle Header
-- powered by Sambesi
-- Jungle Tabs
+- Casambi Unit 1 Online Fix
+- Jungle UI
+- Webinterface
+- Szenensteuerung
+- Lichtsteuerung und Dimmen
 
 ## Build
 
