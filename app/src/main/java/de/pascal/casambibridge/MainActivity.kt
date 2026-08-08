@@ -522,13 +522,6 @@ class MainActivity : AppCompatActivity() {
         val initialReturnIndex = appChoices.indexOfFirst { it.packageName == c.returnAppPackage }.takeIf { it >= 0 } ?: 0
         returnAppSpinner.setSelection(initialReturnIndex)
         selectedReturnAppPackage = appChoices[initialReturnIndex].packageName
-        returnAppSpinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
-            override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
-                selectedReturnAppPackage = appChoices.getOrNull(position)?.packageName ?: ""
-                markSettingsDirty()
-            }
-            override fun onNothingSelected(parent: AdapterView<*>?) {}
-        }
         val saveSettings = button("EINSTELLUNGEN SPEICHERN").apply { visibility = View.GONE }
         configCard.addView(saveSettings)
 
@@ -662,6 +655,13 @@ class MainActivity : AppCompatActivity() {
         setSwitchLeds()
         var suppressDirty = false
         fun markSettingsDirty() { if (!suppressDirty) saveSettings.visibility = View.VISIBLE }
+        returnAppSpinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
+                selectedReturnAppPackage = appChoices.getOrNull(position)?.packageName ?: ""
+                markSettingsDirty()
+            }
+            override fun onNothingSelected(parent: AdapterView<*>?) {}
+        }
         fun watchField(e: EditText, onChange: (() -> Unit)? = null) {
             e.addTextChangedListener(object : TextWatcher {
                 override fun beforeTextChanged(text: CharSequence?, start: Int, count: Int, after: Int) {}
