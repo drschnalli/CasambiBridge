@@ -99,6 +99,8 @@ class CasambiBridgeService : Service() {
             it.publishDiscoveryForDemoLight()
             it.publishDiscoveryForScenes(SceneStore.loadScenes(this))
             it.publishDiscoveryForStatusEntities()
+            it.publishDiscoveryForBridgeSettings()
+            it.publishBridgeSettingsState(config)
             it.publishBridgeStatus("online", "connecting")
             it.publishState("OFF", 0)
         }
@@ -141,6 +143,31 @@ class CasambiBridgeService : Service() {
         ble = createBle(config, false, startGeneration).also { it.connect() }
     }
 
+    private fun updateBridgeSetting(command: CasambiCommand) {
+        val enabled = command.state.equals("ON", true)
+        val current = ConfigStore.load(this)
+        val updated = when (command.targetType) {
+            92 -> current.copy(webInterfaceEnabled = enabled)
+            93 -> current.copy(smbDebugEnabled = enabled)
+            94 -> current.copy(tcpLogEnabled = enabled)
+            95 -> current.copy(autoApiFetchEnabled = enabled)
+            else -> current
+        }
+        ConfigStore.save(this, updated)
+        DebugExporter.configure(updated)
+        TcpLogServer.configure(updated)
+        WebControlServer.configure(this, updated)
+        mqtt?.publishBridgeSettingsState(updated)
+        val label = when (command.targetType) {
+            92 -> "Web Interface"
+            93 -> "SMB Logging"
+            94 -> "TCP Logstream"
+            95 -> "Auto API Fetch"
+            else -> "Setting"
+        }
+        LogBus.log("HA Settings: $label ${if (enabled) "ON" else "OFF"}")
+    }
+
     private fun handleSpecialOrSubmit(command: CasambiCommand) {
         when (command.targetType) {
             90 -> {
@@ -158,6 +185,7 @@ class CasambiBridgeService : Service() {
                 LogBus.log("HA Button: Bridge Restart")
                 startBridge(forceRestart = true)
             }
+            92, 93, 94, 95 -> updateBridgeSetting(command)
             else -> submitOrQueue(command)
         }
     }

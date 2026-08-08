@@ -59,8 +59,14 @@ class MqttBridge(
 
     private fun subscribeCommandTopics() {
         val mqttClient = client ?: return
-        val topics = arrayOf(topic("light/1/set"), topic("scene/+/set"), topic("button/api_fetch/set"), topic("button/restart/set"))
-        val qos = intArrayOf(1, 1, 1, 1)
+        val topics = arrayOf(
+            topic("light/1/set"),
+            topic("scene/+/set"),
+            topic("button/api_fetch/set"),
+            topic("button/restart/set"),
+            topic("settings/+/set")
+        )
+        val qos = intArrayOf(1, 1, 1, 1, 1)
         synchronized(subscribeLock) {
             if (!mqttClient.isConnected || subscribed) return
             subscribed = true
@@ -95,6 +101,27 @@ class MqttBridge(
         if (topicName == topic("button/restart/set")) {
             val command = CasambiCommand(0, "RESTART", 0, 91, "HA Restart Bridge")
             log("MQTT Button Command empfangen: Restart Bridge payload=$payload")
+            commandCallback(command)
+            return
+        }
+
+        val settingsPrefix = "${config.baseTopic}/settings/"
+        if (topicName.startsWith(settingsPrefix) && topicName.endsWith("/set")) {
+            val setting = topicName.removePrefix(settingsPrefix).removeSuffix("/set")
+            val on = payload.trim().equals("ON", true) || payload.trim().equals("true", true) || payload.trim() == "1"
+            val type = when (setting) {
+                "webinterface" -> 92
+                "smb_logging" -> 93
+                "tcp_logstream" -> 94
+                "auto_api_fetch" -> 95
+                else -> -1
+            }
+            if (type < 0) {
+                log("MQTT Settings Command ignoriert: unbekannt setting=$setting payload=$payload")
+                return
+            }
+            val command = CasambiCommand(0, if (on) "ON" else "OFF", if (on) 255 else 0, type, "HA Setting $setting")
+            log("MQTT Settings Command empfangen setting=$setting state=${command.state} payload=$payload")
             commandCallback(command)
             return
         }
@@ -206,6 +233,37 @@ class MqttBridge(
         publish(topic("status/ble"), ble, true)
     }
 
+    fun publishDiscoveryForBridgeSettings() {
+        val settings = listOf(
+            Triple("webinterface", "Casambi Web Interface", "casambi_bridge_webinterface"),
+            Triple("smb_logging", "Casambi SMB Logging", "casambi_bridge_smb_logging"),
+            Triple("tcp_logstream", "Casambi TCP Logstream", "casambi_bridge_tcp_logstream"),
+            Triple("auto_api_fetch", "Casambi Auto API Fetch", "casambi_bridge_auto_api_fetch")
+        )
+        settings.forEach { (key, name, uniqueId) ->
+            val payload = JSONObject()
+                .put("name", name)
+                .put("unique_id", uniqueId)
+                .put("command_topic", topic("settings/$key/set"))
+                .put("state_topic", topic("settings/$key/state"))
+                .put("payload_on", "ON")
+                .put("payload_off", "OFF")
+                .put("state_on", "ON")
+                .put("state_off", "OFF")
+                .put("availability_topic", topic("availability"))
+                .put("device", deviceJson())
+            publish("${config.discoveryPrefix}/switch/casambi_bridge/$key/config", payload.toString(), true)
+        }
+        log("MQTT Bridge Settings Discovery veroeffentlicht")
+    }
+
+    fun publishBridgeSettingsState(c: BridgeConfig = config) {
+        publish(topic("settings/webinterface/state"), if (c.webInterfaceEnabled) "ON" else "OFF", true)
+        publish(topic("settings/smb_logging/state"), if (c.smbDebugEnabled) "ON" else "OFF", true)
+        publish(topic("settings/tcp_logstream/state"), if (c.tcpLogEnabled) "ON" else "OFF", true)
+        publish(topic("settings/auto_api_fetch/state"), if (c.autoApiFetchEnabled) "ON" else "OFF", true)
+    }
+
     fun publishState(state: String, brightness: Int) = publishLightState(1, state, brightness, true, "")
 
     fun publishLightState(id: Int, state: String, brightness: Int, online: Boolean, raw: String) {
@@ -231,7 +289,7 @@ class MqttBridge(
         .put("identifiers", "casambi_bridge_android")
         .put("name", "Android Casambi Bridge")
         .put("manufacturer", "Pascal/Copilot")
-        .put("model", "v0.4.0")
+        .put("model", "v0.4.1")
 
     private fun publish(topicName: String, payload: String, retained: Boolean) {
         val mqttClient = client ?: return

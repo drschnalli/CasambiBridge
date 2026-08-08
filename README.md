@@ -1,51 +1,62 @@
-# Casambi Bridge v0.4.0
+# Casambi Bridge v0.4.1
 
-v0.4.0 ist die erste **Casambi Jungle Identity** Version.
+v0.4.1 erweitert die Home-Assistant-Anbindung um sinnvolle Bridge-Einstellungen als MQTT-Schalter.
 
-## Neu in v0.4.0
+## Neu in v0.4.1
 
-### Header mit Jungle-Charakter
+### Home Assistant Bridge Settings
 
-Der Header zeigt jetzt:
-
-```text
-🌴 CASAMBI JUNGLE // v0.4.0
-powered by Sambesi
-NEON CANOPY CONTROL CENTER
-```
-
-### Jungle Tabs
-
-Die Reiter wirken jetzt dschungelmäßiger:
+Home Assistant bekommt zusätzliche Switch-Entities:
 
 ```text
-🌴 HOME     aktiver Reiter
-🌿 SETUP    inaktiver Reiter
-🌿 CTRL
-🌿 SET
-🌿 ADV
+Casambi Web Interface
+Casambi SMB Logging
+Casambi TCP Logstream
+Casambi Auto API Fetch
 ```
 
-Der aktive Reiter bleibt cyan hervorgehoben, die inaktiven Reiter bleiben grün.
+Damit können wichtige Bridge-Funktionen direkt aus Home Assistant ein- und ausgeschaltet werden.
 
-### Casambi Jungle Karte mit Icons
-
-Der HOME-Reiter startet jetzt mit einer kompakteren Jungle-Karte:
+### MQTT Topics
 
 ```text
-🌴 Kalli
-💡 Units: 1  |  🎭 Scenes: 2
-📡 MQTT mqtt.kallii.net:1883
+casambi_bridge/settings/webinterface/set
+casambi_bridge/settings/webinterface/state
+
+casambi_bridge/settings/smb_logging/set
+casambi_bridge/settings/smb_logging/state
+
+casambi_bridge/settings/tcp_logstream/set
+casambi_bridge/settings/tcp_logstream/state
+
+casambi_bridge/settings/auto_api_fetch/set
+casambi_bridge/settings/auto_api_fetch/state
 ```
 
-### Vorhandene UI-Verbesserungen bleiben erhalten
+Payloads:
 
-- Signal Canopy bleibt erhalten
-- Light Control bleibt größer hervorgehoben
-- Aktive Tabs bleiben erhalten
-- SETUP-Reiter mit Passwortfeld bleibt erhalten
-- MQTT verbunden LED bleibt erhalten
-- Einstellungen speichern Button bei Änderungen bleibt erhalten
+```text
+ON
+OFF
+```
+
+### Verhalten
+
+Wenn Home Assistant einen Schalter betätigt:
+
+- Konfiguration wird gespeichert
+- Webinterface/SMB/TCP/Auto-API-Fetch wird direkt aktualisiert
+- MQTT State Topic wird aktualisiert
+- Signal-Canopy-LEDs reagieren über die bestehende App-Logik
+
+## Weiterhin enthalten
+
+- 🌴 Casambi Jungle Header
+- powered by Sambesi
+- Jungle Tabs
+- SETUP-Reiter mit Passwortfeld
+- MQTT verbunden LED
+- Home Assistant Discovery für Licht, Szenen, Status und Buttons
 
 ## Build
 
