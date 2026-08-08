@@ -37,6 +37,7 @@ object ConfigStore {
             p.getBoolean("directModeEnabled", true),
             p.getBoolean("networkDiscoveryEnabled", true),
             p.getBoolean("autoStartEnabled", false),
+            p.getBoolean("returnAppShowIcon", false),
             p.getString("returnAppPackage", "") ?: ""
         )
     }
@@ -77,6 +78,7 @@ object ConfigStore {
             .putBoolean("directModeEnabled", c.directModeEnabled)
             .putBoolean("networkDiscoveryEnabled", c.networkDiscoveryEnabled)
             .putBoolean("autoStartEnabled", c.autoStartEnabled)
+            .putBoolean("returnAppShowIcon", c.returnAppShowIcon)
             .putString("returnAppPackage", c.returnAppPackage)
             .apply()
     }

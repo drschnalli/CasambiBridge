@@ -12,5 +12,6 @@ data class BridgeConfig(
     val directModeEnabled:Boolean=true,
     val networkDiscoveryEnabled:Boolean=true,
     val autoStartEnabled:Boolean=false,
+    val returnAppShowIcon:Boolean=false,
     val returnAppPackage:String=""
 )
