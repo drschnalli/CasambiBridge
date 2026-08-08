@@ -94,8 +94,9 @@ class CasambiBridgeService : Service() {
         setup(config)
         RuntimeStatus.markBridgeStarted()
         val units = SceneStore.loadUnits(this)
+        val scenes = SceneStore.loadScenes(this)
         val firstUnitName = units.firstOrNull()?.name ?: "Casambi Light 1"
-        RuntimeCounts.sceneCount = SceneStore.loadScenes(this).size
+        RuntimeCounts.sceneCount = scenes.size
         RuntimeCounts.groupCount = SceneStore.loadGroups(this).size
         RuntimeCounts.unitCount = units.size.coerceAtLeast(1)
         ble = createBle(config, true, generation)
@@ -106,13 +107,15 @@ class CasambiBridgeService : Service() {
             it.connectSafe()
             it.publishAvailability(true)
             it.publishDiscoveryForDemoLight(firstUnitName)
-            it.publishDiscoveryForScenes(SceneStore.loadScenes(this))
+            it.publishDiscoveryForScenes(scenes)
             it.publishDiscoveryForStatusEntities()
             it.publishDiscoveryForBridgeSettings()
-            // v0.5.9: diagnostics discovery/state publishing remains disabled at startup to prevent MQTT publish storms.
-            it.publishHacsDiscovery(config, units)
+            // v0.6.0: diagnostics discovery/state publishing remains disabled at startup to prevent MQTT publish storms.
+            it.publishHacsDiscovery(config, units, scenes)
             it.publishBridgeSettingsState(config)
+            it.publishScenesList(scenes)
             it.publishHacsDiagnostics(config)
+            it.publishActiveScene(scenes)
             it.publishBridgeStatus("online", "connecting")
             it.publishState("OFF", 0)
         }
@@ -176,7 +179,7 @@ class CasambiBridgeService : Service() {
         TcpLogServer.configure(updated)
         WebControlServer.configure(this, updated)
         mqtt?.publishBridgeSettingsState(updated)
-        mqtt?.publishHacsDiscovery(updated, SceneStore.loadUnits(this))
+        mqtt?.publishHacsDiscovery(updated, SceneStore.loadUnits(this), SceneStore.loadScenes(this))
         mqtt?.publishHacsDiagnostics(updated)
         val label = when (command.targetType) {
             92 -> "Web Interface"
@@ -207,7 +210,14 @@ class CasambiBridgeService : Service() {
                 startBridge(forceRestart = true)
             }
             92, 93, 94, 95, 96 -> updateBridgeSetting(command)
-            else -> submitOrQueue(command)
+            else -> {
+                if (command.targetType == 4) {
+                    val sceneName = SceneStore.loadScenes(this).firstOrNull { it.id == command.unitId }?.name ?: command.label ?: "Scene ${command.unitId}"
+                    RuntimeStatus.markScene(command.unitId, sceneName)
+                    mqtt?.publishActiveScene(SceneStore.loadScenes(this))
+                }
+                submitOrQueue(command)
+            }
         }
     }
 
@@ -216,7 +226,7 @@ class CasambiBridgeService : Service() {
         val brightness = if (intent.hasExtra(EXTRA_BRIGHTNESS)) intent.getIntExtra(EXTRA_BRIGHTNESS, -1).takeIf { it >= 0 } else null
         val command = CasambiCommand(1, state, brightness)
         RuntimeStatus.clearScene()
-        mqtt?.publishActiveScene()
+        mqtt?.publishActiveScene(SceneStore.loadScenes(this))
         LogBus.log("App Control Command Unit 1 state=${state ?: "-"} brightness=${brightness ?: -1} effective=${command.effectiveBrightness}")
         submitOrQueue(command)
     }
@@ -230,7 +240,7 @@ class CasambiBridgeService : Service() {
         }
         val command = CasambiCommand(sceneId, "ON", 255, 4, sceneName)
         RuntimeStatus.markScene(sceneId, sceneName)
-        mqtt?.publishActiveScene()
+        mqtt?.publishActiveScene(SceneStore.loadScenes(this))
         LogBus.log("Scene Command scene=$sceneId name=$sceneName effective=${command.effectiveBrightness}")
         submitOrQueue(command)
     }
