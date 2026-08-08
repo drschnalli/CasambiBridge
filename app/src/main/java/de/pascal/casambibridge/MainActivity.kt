@@ -98,7 +98,7 @@ class MainActivity : AppCompatActivity() {
 
         val headerRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         headerRow.addView(TextView(this).apply {
-            text = "CASAMBI BRIDGE // v0.3.2"
+            text = "CASAMBI BRIDGE // v0.3.3"
             textSize = 21f
             setTextColor(leaf)
             setTypeface(Typeface.MONOSPACE, Typeface.BOLD)
@@ -535,8 +535,7 @@ class MainActivity : AppCompatActivity() {
                 val row = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(0, 8, 0, 8) }
                 row.addView(TextView(this).apply {
                     val ok = if (d.manufacturer963 && d.casaUuid) "CASAMBI OK" else "Kandidat"
-                    text = "$ok • ${d.name.ifBlank { "Unbenannt" }} • ${d.address} • RSSI ${d.rssi}
-manufacturer963=${d.manufacturer963} casaUuid=${d.casaUuid}"
+                    text = "$ok • ${d.name.ifBlank { "Unbenannt" }} • ${d.address} • RSSI ${d.rssi}\nmanufacturer963=${d.manufacturer963} casaUuid=${d.casaUuid}"
                     textSize = 10f
                     setTextColor(textMain)
                     setTypeface(Typeface.MONOSPACE, Typeface.NORMAL)
