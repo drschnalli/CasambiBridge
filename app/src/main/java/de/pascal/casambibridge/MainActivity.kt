@@ -823,8 +823,8 @@ class MainActivity : AppCompatActivity() {
         fun arpMacFor(ip: String): String {
             return runCatching {
                 java.io.File("/proc/net/arp").readLines().drop(1).firstOrNull { line ->
-                    line.trim().split(Regex("\s+")).firstOrNull() == ip
-                }?.trim()?.split(Regex("\s+"))?.getOrNull(3) ?: "-"
+                    line.trim().split(Regex("\\s+")).firstOrNull() == ip
+                }?.trim()?.split(Regex("\\s+"))?.getOrNull(3) ?: "-"
             }.getOrDefault("-")
         }
         fun portListForScan(): List<Int> {
