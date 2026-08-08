@@ -13,7 +13,9 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.os.Process
+import android.text.Editable
 import android.text.InputType
+import android.text.TextWatcher
 import android.view.View
 import android.widget.Button
 import android.widget.EditText
@@ -47,6 +49,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var statusText: TextView
     private lateinit var bleRxLed: TextView
     private lateinit var bleTxLed: TextView
+    private lateinit var mqttStatusLed: TextView
     private lateinit var mqttInLed: TextView
     private lateinit var mqttOutLed: TextView
     private lateinit var smbLed: TextView
@@ -75,6 +78,12 @@ class MainActivity : AppCompatActivity() {
         lampValueTextSafe()?.let { it.text = "Status: ${RuntimeStatus.lastState} ${RuntimeStatus.lastBrightness}" }
         if (::bleRxLed.isInitialized) setLedSafeLamp()
         if (line.contains("API Fetch OK") || line.contains("Auto API Fetch OK")) ui.post { sceneRefresh?.invoke() }
+        if (::mqttStatusLed.isInitialized) {
+            when {
+                line.contains("MQTT verbunden") -> setLed(mqttStatusLed, true)
+                line.contains("MQTT Verbindung verloren") || line.contains("MQTT Fehler") || line.contains("MQTT Host leer") -> setLed(mqttStatusLed, false)
+            }
+        }
         when {
             line.contains("Notify") || line.contains("UnitState") || line.contains("Authentication successful") -> flash(bleRxLed)
             line.contains("TX Frame") || line.contains("TX Encrypted") || line.contains("GATT write") -> flash(bleTxLed)
@@ -98,7 +107,7 @@ class MainActivity : AppCompatActivity() {
 
         val headerRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         headerRow.addView(TextView(this).apply {
-            text = "CASAMBI BRIDGE // v0.3.3"
+            text = "CASAMBI BRIDGE // v0.3.4"
             textSize = 21f
             setTextColor(leaf)
             setTypeface(Typeface.MONOSPACE, Typeface.BOLD)
@@ -246,6 +255,7 @@ class MainActivity : AppCompatActivity() {
         statusCard.addView(sigGrid1)
         bleRxLed = signalRow(sigGrid1, "Casambi Bluetooth RX")
         bleTxLed = signalRow(sigGrid1, "Casambi Bluetooth TX")
+        mqttStatusLed = signalRow(sigGrid1, "MQTT verbunden")
         mqttInLed = signalRow(sigGrid1, "MQTT Eingang")
         mqttOutLed = signalRow(sigGrid1, "MQTT Ausgang")
         smbLed = signalRow(sigGrid1, "SMB Logging aktiv")
@@ -380,6 +390,10 @@ class MainActivity : AppCompatActivity() {
         val smbPassword = field(configCard, "SMB Passwort", c.smbPassword, true)
         val tcpPort = field(configCard, "TCP Logstream Port", c.tcpLogPort.toString())
         val webPort = field(configCard, "Webinterface Port", c.webInterfacePort.toString())
+        val saveSettings = button("EINSTELLUNGEN SPEICHERN").apply {
+            visibility = View.GONE
+        }
+        configCard.addView(saveSettings)
 
         fun switchRow(parent: LinearLayout, text: String, checked: Boolean): Pair<Switch, TextView> {
             val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
@@ -472,6 +486,7 @@ class MainActivity : AppCompatActivity() {
         )
 
         fun setSwitchLeds() {
+            setLed(mqttStatusLed, false)
             setLed(smbLed, smbSwitch.isChecked)
             setLed(webLed, webSwitch.isChecked)
             setLed(tcpLed, tcpSwitch.isChecked)
@@ -481,10 +496,22 @@ class MainActivity : AppCompatActivity() {
             setLed(autoApiSwitchLed, autoApiSwitch.isChecked)
         }
         setSwitchLeds()
-        smbSwitch.setOnCheckedChangeListener { _, _ -> setSwitchLeds() }
-        webSwitch.setOnCheckedChangeListener { _, _ -> setSwitchLeds() }
-        tcpSwitch.setOnCheckedChangeListener { _, _ -> setSwitchLeds() }
-        autoApiSwitch.setOnCheckedChangeListener { _, _ -> setSwitchLeds() }
+        var suppressDirty = false
+        fun markSettingsDirty() {
+            if (!suppressDirty) saveSettings.visibility = View.VISIBLE
+        }
+        fun watchField(e: EditText) {
+            e.addTextChangedListener(object : TextWatcher {
+                override fun beforeTextChanged(text: CharSequence?, start: Int, count: Int, after: Int) {}
+                override fun onTextChanged(text: CharSequence?, start: Int, before: Int, count: Int) { markSettingsDirty() }
+                override fun afterTextChanged(editable: Editable?) {}
+            })
+        }
+        listOf(mac, network, casambiPass, protocol, keyId, keyHex, mqttHost, mqttPort, mqttUser, mqttPass, baseTopic, discoveryPrefix, smbServer, smbShare, smbPath, smbDomain, smbUser, smbPassword, tcpPort, webPort).forEach { watchField(it) }
+        smbSwitch.setOnCheckedChangeListener { _, _ -> setSwitchLeds(); markSettingsDirty() }
+        webSwitch.setOnCheckedChangeListener { _, _ -> setSwitchLeds(); markSettingsDirty() }
+        tcpSwitch.setOnCheckedChangeListener { _, _ -> setSwitchLeds(); markSettingsDirty() }
+        autoApiSwitch.setOnCheckedChangeListener { _, _ -> setSwitchLeds(); markSettingsDirty() }
 
         currentPage = setupPage
         val setupCard = card("Casambi Setup")
@@ -602,6 +629,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         fun applyConfig(x: BridgeConfig) {
+            suppressDirty = true
             mac.setText(x.casambiMac); network.setText(x.casambiNetworkName); casambiPass.setText(x.casambiPassword)
             protocol.setText(x.casambiProtocolVersion.toString()); keyId.setText(x.casambiKeyId.toString()); keyHex.setText(x.casambiKeyHex)
             mqttHost.setText(x.mqttHost); mqttPort.setText(x.mqttPort.toString()); mqttUser.setText(x.mqttUser); mqttPass.setText(x.mqttPassword)
@@ -610,6 +638,8 @@ class MainActivity : AppCompatActivity() {
             tcpPort.setText(x.tcpLogPort.toString()); webPort.setText(x.webInterfacePort.toString())
             smbSwitch.isChecked = x.smbDebugEnabled; webSwitch.isChecked = x.webInterfaceEnabled; tcpSwitch.isChecked = x.tcpLogEnabled; autoApiSwitch.isChecked = x.autoApiFetchEnabled
             setSwitchLeds()
+            saveSettings.visibility = View.GONE
+            suppressDirty = false
         }
 
         fun saveNow() {
@@ -618,6 +648,7 @@ class MainActivity : AppCompatActivity() {
             DebugExporter.configure(cfg)
             TcpLogServer.configure(cfg)
             WebControlServer.configure(this, cfg)
+            saveSettings.visibility = View.GONE
             statusText.text = "Konfiguration gespeichert"
             LogBus.log("Konfiguration gespeichert")
         }
@@ -651,6 +682,7 @@ class MainActivity : AppCompatActivity() {
         })
 
         save.setOnClickListener { saveNow() }
+        saveSettings.setOnClickListener { saveNow() }
         start.setOnClickListener { saveNow(); startService(Intent(this, CasambiBridgeService::class.java).apply { action = CasambiBridgeService.ACTION_START }) }
         stop.setOnClickListener { startService(Intent(this, CasambiBridgeService::class.java).apply { action = CasambiBridgeService.ACTION_STOP }) }
         mqttTest.setOnClickListener { saveNow(); MqttBridge(currentConfig(), LogBus::log).also { it.connectSafe(); it.publishTest(); it.disconnect() } }
