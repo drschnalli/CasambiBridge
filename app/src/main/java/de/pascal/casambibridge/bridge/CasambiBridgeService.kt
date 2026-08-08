@@ -110,7 +110,7 @@ class CasambiBridgeService : Service() {
             it.publishDiscoveryForScenes(scenes)
             it.publishDiscoveryForStatusEntities()
             it.publishDiscoveryForBridgeSettings()
-            // v0.6.0: diagnostics discovery/state publishing remains disabled at startup to prevent MQTT publish storms.
+            // v0.6.1: diagnostics discovery/state publishing remains disabled at startup to prevent MQTT publish storms.
             it.publishHacsDiscovery(config, units, scenes)
             it.publishBridgeSettingsState(config)
             it.publishScenesList(scenes)
@@ -211,10 +211,23 @@ class CasambiBridgeService : Service() {
             }
             92, 93, 94, 95, 96 -> updateBridgeSetting(command)
             else -> {
+                val scenes = SceneStore.loadScenes(this)
                 if (command.targetType == 4) {
-                    val sceneName = SceneStore.loadScenes(this).firstOrNull { it.id == command.unitId }?.name ?: command.label ?: "Scene ${command.unitId}"
+                    val sceneName = scenes.firstOrNull { it.id == command.unitId }?.name ?: command.label ?: "Scene ${command.unitId}"
                     RuntimeStatus.markScene(command.unitId, sceneName)
-                    mqtt?.publishActiveScene(SceneStore.loadScenes(this))
+                    mqtt?.publishActiveScene(scenes)
+                } else {
+                    // v0.6.1: Any manual unit/group/light command coming from MQTT means the previous scene
+                    // is no longer guaranteed to be active. Keep Android UI, Web UI, MQTT and HACS in sync.
+                    if (RuntimeStatus.lastSceneId >= 0 || RuntimeStatus.lastSceneName.isNotBlank()) {
+                        RuntimeStatus.clearScene()
+                        mqtt?.publishActiveScene(scenes)
+                        LogBus.log("Active Scene durch manuellen MQTT Command zurueckgesetzt")
+                    } else {
+                        // Still publish the cleared retained state so Home Assistant/HACS cannot keep stale scene activity.
+                        RuntimeStatus.clearScene()
+                        mqtt?.publishActiveScene(scenes)
+                    }
                 }
                 submitOrQueue(command)
             }
