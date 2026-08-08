@@ -108,7 +108,7 @@ class MainActivity : AppCompatActivity() {
 
         val headerRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         headerRow.addView(TextView(this).apply {
-            text = "🌴 CASAMBI JUNGLE // v0.5.5"
+            text = "🌴 CASAMBI JUNGLE // v0.5.6"
             textSize = 21f
             setTextColor(leaf)
             setTypeface(Typeface.MONOSPACE, Typeface.BOLD)
@@ -472,6 +472,7 @@ class MainActivity : AppCompatActivity() {
         val (webSwitch, webSwitchLed) = switchRow(toggleCard, "Web Server", c.webInterfaceEnabled)
         val (tcpSwitch, tcpSwitchLed) = switchRow(toggleCard, "TCP Logstream", c.tcpLogEnabled)
         val (autoApiSwitch, autoApiSwitchLed) = switchRow(toggleCard, "Auto API Fetch", c.autoApiFetchEnabled)
+        val (webSocketSwitch, webSocketSwitchLed) = switchRow(toggleCard, "WebSocket Live Updates", c.webSocketLiveEnabled)
 
         currentPage = controlPage
         val actionCard = card("Actions")
@@ -538,7 +539,8 @@ class MainActivity : AppCompatActivity() {
             tcpLogPort = tcpPort.text.toString().toIntOrNull() ?: 5555,
             webInterfaceEnabled = webSwitch.isChecked,
             webInterfacePort = webPort.text.toString().toIntOrNull() ?: 8080,
-            autoApiFetchEnabled = autoApiSwitch.isChecked
+            autoApiFetchEnabled = autoApiSwitch.isChecked,
+            webSocketLiveEnabled = webSocketSwitch.isChecked
         )
 
         fun setSwitchLeds() {
@@ -550,6 +552,7 @@ class MainActivity : AppCompatActivity() {
             setLed(webSwitchLed, webSwitch.isChecked)
             setLed(tcpSwitchLed, tcpSwitch.isChecked)
             setLed(autoApiSwitchLed, autoApiSwitch.isChecked)
+            setLed(webSocketSwitchLed, webSocketSwitch.isChecked)
         }
         setSwitchLeds()
         var suppressDirty = false
@@ -566,6 +569,7 @@ class MainActivity : AppCompatActivity() {
         webSwitch.setOnCheckedChangeListener { _, _ -> setSwitchLeds(); markSettingsDirty() }
         tcpSwitch.setOnCheckedChangeListener { _, _ -> setSwitchLeds(); markSettingsDirty() }
         autoApiSwitch.setOnCheckedChangeListener { _, _ -> setSwitchLeds(); markSettingsDirty() }
+        webSocketSwitch.setOnCheckedChangeListener { _, _ -> setSwitchLeds(); markSettingsDirty() }
 
         currentPage = setupPage
         val setupCard = card("Casambi Setup")
@@ -705,7 +709,7 @@ class MainActivity : AppCompatActivity() {
             baseTopic.setText(x.baseTopic); discoveryPrefix.setText(x.discoveryPrefix)
             smbServer.setText(x.smbServer); smbShare.setText(x.smbShare); smbPath.setText(x.smbPath); smbDomain.setText(x.smbDomain); smbUser.setText(x.smbUser); smbPassword.setText(x.smbPassword)
             tcpPort.setText(x.tcpLogPort.toString()); webPort.setText(x.webInterfacePort.toString())
-            smbSwitch.isChecked = x.smbDebugEnabled; webSwitch.isChecked = x.webInterfaceEnabled; tcpSwitch.isChecked = x.tcpLogEnabled; autoApiSwitch.isChecked = x.autoApiFetchEnabled
+            smbSwitch.isChecked = x.smbDebugEnabled; webSwitch.isChecked = x.webInterfaceEnabled; tcpSwitch.isChecked = x.tcpLogEnabled; autoApiSwitch.isChecked = x.autoApiFetchEnabled; webSocketSwitch.isChecked = x.webSocketLiveEnabled
             setSwitchLeds()
             refreshSetupStatus()
             saveSettings.visibility = View.GONE

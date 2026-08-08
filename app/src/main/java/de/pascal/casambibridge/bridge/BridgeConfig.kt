@@ -6,5 +6,6 @@ data class BridgeConfig(
     val smbDebugEnabled:Boolean=false, val smbServer:String="", val smbShare:String="", val smbPath:String="casambi_debug", val smbDomain:String="", val smbUser:String="", val smbPassword:String="",
     val tcpLogEnabled:Boolean=false, val tcpLogPort:Int=5555,
     val webInterfaceEnabled:Boolean=false, val webInterfacePort:Int=8080,
-    val autoApiFetchEnabled:Boolean=false
+    val autoApiFetchEnabled:Boolean=false,
+    val webSocketLiveEnabled:Boolean=false
 )

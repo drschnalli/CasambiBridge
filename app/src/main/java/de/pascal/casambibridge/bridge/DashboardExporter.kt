@@ -98,7 +98,7 @@ object DashboardExporter {
         b.appendLine("    content: |")
         b.appendLine("      **Casambi Gruppen:** $groupInfo")
         b.appendLine("      ")
-        b.appendLine("      Dashboard automatisch erzeugt durch Casambi Bridge v0.5.5.")
+        b.appendLine("      Dashboard automatisch erzeugt durch Casambi Bridge v0.5.6.")
         return b.toString()
     }
 
