@@ -1,86 +1,106 @@
-# Casambi Bridge v0.3.1
+# Casambi Bridge v0.3.2
 
-v0.3.1 ist ein UI-Fix auf Basis von v0.3.0.
+v0.3.2 erweitert v0.3.1 um einen ersten echten Setup-/Onboarding-Flow.
 
-## Fix in v0.3.1
+## Neu in v0.3.2
 
-Der `CTRL`-Reiter hatte noch horizontale Button-Reihen. Auf kleinen Displays wurden dadurch `FETCH API` und besonders `SCAN CASAMBI` abgeschnitten oder gar nicht sichtbar.
+### SETUP-Reiter
 
-In v0.3.1 ist der `CTRL`-Reiter jetzt als 2-Spalten-Grid aufgebaut:
-
-```text
-START          STOP
-FETCH API      SCAN CASAMBI
-SAVE           MQTT
-BLE            BACKUP SMB
-RESTORE SMB
-```
-
-Dadurch bleiben alle Aktionen sichtbar und nichts läuft rechts aus dem Bildschirm.
-
-## Reiter
+Die Tab-Leiste ist jetzt:
 
 ```text
-HOME   CTRL   SET   ADV   LOG
+HOME   SETUP   CTRL   SET   ADV
 ```
 
-### HOME
+Der bisherige `LOG`-Hinweis wurde in `ADV` verschoben.
 
-- Signal/Status LEDs
-- Unit 1 Steuerung
-- Szenen
-- System Status
+### Casambi Discovery Ergebnisliste
 
-### CTRL
+Der SETUP-Reiter zeigt gefundene Casambi-Geräte nun als Liste:
 
-- START
-- STOP
-- FETCH API
-- SCAN CASAMBI
-- SAVE
-- MQTT
-- BLE
-- BACKUP SMB
-- RESTORE SMB
+```text
+CASAMBI OK • Name • MAC • RSSI
+manufacturer963=true casaUuid=true
+[AUSWÄHLEN]
+```
 
-### SET
+Der Scan sucht weiterhin nach:
+
+```text
+Manufacturer Data ID = 963
+CASA UUID = c9ffde48-ca5a-0000-ab83-8f519b482f77
+```
+
+Zusätzlich bleiben vorhandene Fallbacks aktiv:
+
+- bereits eingetragene MAC
+- Name enthält `Casambi`
+
+### Gerät auswählen
+
+Wenn ein gefundenes Gerät ausgewählt wird:
+
+- MAC wird in `Casambi BLE MAC` übernommen
+- Status zeigt das ausgewählte Gerät
+- Log schreibt Name, MAC, RSSI und Discovery-Kriterien
+
+### ADD / API FETCH
+
+Der SETUP-Reiter hat jetzt:
+
+```text
+ADD / API FETCH
+```
+
+Der Button startet den bestehenden API-Fetch-Flow. Das Netzwerkpasswort wird weiterhin im SET-Reiter im Feld `Casambi Passwort optional` eingetragen.
+
+### RESET CASAMBI CONFIG
+
+Für den Test als neuer Benutzer gibt es:
+
+```text
+RESET CASAMBI CONFIG
+```
+
+Der Button löscht lokal nur:
 
 - Casambi MAC
-- Casambi Netzwerkname
-- Casambi Passwort
-- MQTT
-- Home Assistant Discovery Prefix
-- SMB
-- Webinterface
-- TCP Logstream
-- Auto API Fetch
-
-### ADV
-
+- Netzwerkname
 - Protocol Version
 - Key ID
 - HEX Key
+- Szenen
+- Gruppen
 
-### LOG
+MQTT/SMB/Web-Konfiguration bleiben erhalten.
 
-- Hinweis auf SMB/TCP-Diagnose
+## Testablauf neuer Benutzer
+
+```text
+RESET CASAMBI CONFIG
+SETUP öffnen
+SCAN CASAMBI
+Gerät auswählen
+SET öffnen und Netzwerkpasswort eintragen
+zurück zu SETUP
+ADD / API FETCH
+Bridge startet
+Szenen erscheinen
+Home Assistant Discovery bleibt aktiv
+```
 
 ## Weiterhin enthalten
 
+- v0.3.1 2-Spalten-Actions
+- v0.2.38 Doppelstart-Fix
 - Auto API Fetch
 - API-managed KeyStore
-- Casambi BLE Discovery per Manufacturer `963` + CASA UUID
-- App/Web/MQTT Lichtsteuerung
-- App/Web/MQTT Szenensteuerung
 - Home Assistant Szenenbuttons
 - Home Assistant Status-Entities
-- Home Assistant Buttons:
-  - Casambi API Fetch
-  - Casambi Restart Bridge
-- v0.2.38 Doppelstart-Fix
-- Unit 1 Connected/Online LED
+- Home Assistant API Fetch / Restart Buttons
+- App/Web/MQTT Lichtsteuerung
+- App/Web/MQTT Szenensteuerung
 - PS2-Style LED-Flicker
-- Force Stop Button
 
 ## Build
 

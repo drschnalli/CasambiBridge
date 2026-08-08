@@ -98,7 +98,7 @@ class MainActivity : AppCompatActivity() {
 
         val headerRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         headerRow.addView(TextView(this).apply {
-            text = "CASAMBI BRIDGE // v0.3.1"
+            text = "CASAMBI BRIDGE // v0.3.2"
             textSize = 21f
             setTextColor(leaf)
             setTypeface(Typeface.MONOSPACE, Typeface.BOLD)
@@ -136,11 +136,11 @@ class MainActivity : AppCompatActivity() {
             visibility = View.GONE
         }
         val homePage = page()
+        val setupPage = page()
         val controlPage = page()
         val settingsPage = page()
         val advancedPage = page()
-        val logsPage = page()
-        val pages = listOf(homePage, controlPage, settingsPage, advancedPage, logsPage)
+        val pages = listOf(homePage, setupPage, controlPage, settingsPage, advancedPage)
         pages.forEach { root.addView(it) }
         var currentPage: LinearLayout = homePage
 
@@ -159,10 +159,10 @@ class MainActivity : AppCompatActivity() {
             setOnClickListener { showPage(target) }
         }
         tabBar.addView(tab("HOME", homePage))
+        tabBar.addView(tab("SETUP", setupPage))
         tabBar.addView(tab("CTRL", controlPage))
         tabBar.addView(tab("SET", settingsPage))
         tabBar.addView(tab("ADV", advancedPage))
-        tabBar.addView(tab("LOG", logsPage))
         showPage(homePage)
 
         fun card(title: String): LinearLayout {
@@ -259,7 +259,7 @@ class MainActivity : AppCompatActivity() {
             setPadding(0, 10, 0, 0)
         }
         statusCard.addView(statusText)
-        currentPage = logsPage
+        currentPage = advancedPage
         val logCard = card("Current Log")
         logCard.addView(TextView(this).apply {
             text = "Live Status wird oben im HOME-Tab gezeigt. Ausfuehrliche Logs laufen ueber SMB/TCP."
@@ -302,7 +302,7 @@ class MainActivity : AppCompatActivity() {
             setPadding(0, 6, 0, 4)
         })
         roadmapCard.addView(TextView(this).apply {
-            text = "KEY: API-managed • DISCOVERY: BLE Manufacturer 963 + CASA UUID • NEXT: UI polish"
+            text = "KEY: API-managed • SETUP: Scan, Auswahl, API Fetch • NEXT: UI polish"
             textSize = 11f
             setTextColor(textMuted)
             setTypeface(Typeface.MONOSPACE, Typeface.NORMAL)
@@ -435,6 +435,15 @@ class MainActivity : AppCompatActivity() {
 
         setContentView(scroll)
 
+        data class DiscoveredCasambiDevice(
+            val address: String,
+            val name: String,
+            val rssi: Int,
+            val manufacturer963: Boolean,
+            val casaUuid: Boolean
+        )
+        val discoveredCasambiDevices = linkedMapOf<String, DiscoveredCasambiDevice>()
+
         fun currentConfig() = BridgeConfig(
             casambiMac = mac.text.toString().trim(),
             casambiNetworkName = network.text.toString(),
@@ -477,6 +486,73 @@ class MainActivity : AppCompatActivity() {
         tcpSwitch.setOnCheckedChangeListener { _, _ -> setSwitchLeds() }
         autoApiSwitch.setOnCheckedChangeListener { _, _ -> setSwitchLeds() }
 
+        currentPage = setupPage
+        val setupCard = card("Casambi Setup")
+        setupCard.addView(TextView(this).apply {
+            text = "1. Scan starten  2. Gerät auswählen  3. Netzwerkpasswort eintragen  4. Hinzufügen / API Fetch"
+            textSize = 10f
+            setTextColor(textMuted)
+            setTypeface(Typeface.MONOSPACE, Typeface.NORMAL)
+            setPadding(0, 6, 0, 8)
+        })
+        val setupScan = button("SCAN CASAMBI")
+        val setupReset = button("RESET CASAMBI CONFIG")
+        val setupAddFetch = button("ADD / API FETCH")
+        val setupDeviceList = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        setupCard.addView(setupScan)
+        setupCard.addView(setupDeviceList)
+        setupCard.addView(label("Netzwerkpasswort"))
+        setupCard.addView(TextView(this).apply {
+            text = "Bitte im SET-Tab im Feld 'Casambi Passwort optional' eintragen. Dieses Passwort wird für den API Fetch verwendet."
+            textSize = 10f
+            setTextColor(textMuted)
+            setTypeface(Typeface.MONOSPACE, Typeface.NORMAL)
+            setPadding(0, 4, 0, 8)
+        })
+        setupCard.addView(setupAddFetch)
+        setupCard.addView(setupReset)
+        setupCard.addView(TextView(this).apply {
+            text = "Reset löscht nur Casambi-MAC, Netzwerkname, Key und Szenen. MQTT/SMB/Web bleiben erhalten."
+            textSize = 10f
+            setTextColor(textMuted)
+            setTypeface(Typeface.MONOSPACE, Typeface.NORMAL)
+            setPadding(0, 8, 0, 0)
+        })
+
+        fun refreshSetupDeviceList() {
+            setupDeviceList.removeAllViews()
+            if (discoveredCasambiDevices.isEmpty()) {
+                setupDeviceList.addView(TextView(this).apply {
+                    text = "Noch keine Casambi-Geräte gefunden."
+                    textSize = 11f
+                    setTextColor(textMuted)
+                    setTypeface(Typeface.MONOSPACE, Typeface.NORMAL)
+                    setPadding(0, 10, 0, 10)
+                })
+                return
+            }
+            discoveredCasambiDevices.values.sortedByDescending { it.rssi }.forEach { d ->
+                val row = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(0, 8, 0, 8) }
+                row.addView(TextView(this).apply {
+                    val ok = if (d.manufacturer963 && d.casaUuid) "CASAMBI OK" else "Kandidat"
+                    text = "$ok • ${d.name.ifBlank { "Unbenannt" }} • ${d.address} • RSSI ${d.rssi}
+manufacturer963=${d.manufacturer963} casaUuid=${d.casaUuid}"
+                    textSize = 10f
+                    setTextColor(textMain)
+                    setTypeface(Typeface.MONOSPACE, Typeface.NORMAL)
+                })
+                val choose = button("AUSWÄHLEN")
+                choose.setOnClickListener {
+                    mac.setText(d.address)
+                    statusText.text = "Casambi Gerät ausgewählt: ${d.address}"
+                    LogBus.log("Setup Device ausgewaehlt: name=${d.name} address=${d.address} rssi=${d.rssi} manufacturer963=${d.manufacturer963} casaUuid=${d.casaUuid}")
+                }
+                row.addView(choose)
+                setupDeviceList.addView(row)
+            }
+        }
+        refreshSetupDeviceList()
+
         fun scanBluetoothForCasambi() {
             statusText.text = "Bluetooth Scan nach Casambi gestartet"
             LogBus.log("Bluetooth Scan nach Casambi gestartet: manufacturer=$casambiManufacturerId service=$casambiServiceUuid")
@@ -498,8 +574,10 @@ class MainActivity : AppCompatActivity() {
                     val currentMacMatches = address.replace(":", "").equals(mac.text.toString().replace(":", ""), true)
                     val nameFallback = name.contains("casambi", true)
                     if ((manufacturerMatch && serviceMatch) || currentMacMatches || nameFallback) {
-                        try { scanner.stopScan(this) } catch (_: Throwable) {}
-                        mac.setText(address)
+                        val deviceInfo = DiscoveredCasambiDevice(address, name, result.rssi, manufacturerMatch, serviceMatch)
+                        discoveredCasambiDevices[address] = deviceInfo
+                        refreshSetupDeviceList()
+                        if (mac.text.toString().isBlank()) mac.setText(address)
                         statusText.text = "Casambi gefunden: $name $address"
                         LogBus.log("Bluetooth Scan Treffer: name=$name address=$address rssi=${result.rssi} manufacturer963=$manufacturerMatch casaUuid=$serviceMatch")
                         flash(bleRxLed)
@@ -603,6 +681,20 @@ class MainActivity : AppCompatActivity() {
         }
 
         scanBt.setOnClickListener { scanBluetoothForCasambi() }
+        setupScan.setOnClickListener { scanBluetoothForCasambi() }
+        setupReset.setOnClickListener {
+            val cfg = currentConfig().copy(casambiMac = "", casambiNetworkName = "", casambiProtocolVersion = 11, casambiKeyId = 2, casambiKeyHex = "")
+            ConfigStore.save(this, cfg)
+            SceneStore.saveScenes(this, emptyList())
+            SceneStore.saveGroups(this, emptyList())
+            discoveredCasambiDevices.clear()
+            applyConfig(cfg)
+            refreshSceneButtons()
+            refreshSetupDeviceList()
+            statusText.text = "Casambi Config zurückgesetzt"
+            LogBus.log("Setup Reset: Casambi Config, KeyStore und Szenen lokal geloescht")
+        }
+        setupAddFetch.setOnClickListener { fetchApi.performClick() }
 
         if (mac.text.toString().isBlank()) ui.postDelayed({ scanBluetoothForCasambi() }, 900)
 
