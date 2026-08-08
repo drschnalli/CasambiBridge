@@ -13,9 +13,7 @@ object DashboardExporter {
         val dir = DebugExporter.smbDir(config)
         SmbFile(dir, ctx).use { if (!it.exists()) it.mkdirs() }
         val url = dir + FILE
-        SmbFileOutputStream(SmbFile(url, ctx), false).use {
-            it.write(yaml.toByteArray(Charsets.UTF_8))
-        }
+        SmbFileOutputStream(SmbFile(url, ctx), false).use { it.write(yaml.toByteArray(Charsets.UTF_8)) }
         return url
     }
 
@@ -35,7 +33,6 @@ object DashboardExporter {
         b.appendLine("    subtitle: \"$networkName - powered by Sambesi\"")
         b.appendLine("    alignment: center")
         b.appendLine("")
-
         b.appendSeparator("Bridge Diagnostics", "mdi:access-point-network")
         b.appendLine("  - type: custom:mushroom-chips-card")
         b.appendLine("    chips:")
@@ -46,7 +43,6 @@ object DashboardExporter {
         b.appendChip("sensor.android_casambi_bridge_casambi_scene_count")
         b.appendChip("sensor.android_casambi_bridge_casambi_group_count")
         b.appendLine("")
-
         b.appendSeparator("Light Control", "mdi:lightbulb")
         b.appendLine("  - type: custom:mushroom-light-card")
         b.appendLine("    entity: light.android_casambi_bridge_casambi_light_1")
@@ -58,7 +54,6 @@ object DashboardExporter {
         b.appendLine("    use_light_color: false")
         b.appendLine("    collapsible_controls: false")
         b.appendLine("")
-
         b.appendLine("  - type: grid")
         b.appendLine("    columns: 3")
         b.appendLine("    square: false")
@@ -67,7 +62,6 @@ object DashboardExporter {
         b.appendServiceButton("OFF", "Licht aus", "mdi:power", "red", "light.turn_off", "light.android_casambi_bridge_casambi_light_1")
         b.appendLight40Button()
         b.appendLine("")
-
         b.appendSeparator("Scenes", "mdi:palette")
         b.appendLine("  - type: grid")
         b.appendLine("    columns: 2")
@@ -87,7 +81,6 @@ object DashboardExporter {
             }
         }
         b.appendLine("")
-
         b.appendSeparator("Bridge Settings", "mdi:tune")
         b.appendLine("  - type: grid")
         b.appendLine("    columns: 2")
@@ -98,7 +91,6 @@ object DashboardExporter {
         b.appendEntitySwitch("switch.android_casambi_bridge_casambi_tcp_logstream", "TCP Logstream", "mdi:console-network")
         b.appendEntitySwitch("switch.android_casambi_bridge_casambi_auto_api_fetch", "Auto API Fetch", "mdi:cloud-sync")
         b.appendLine("")
-
         b.appendSeparator("Bridge Controls", "mdi:tools")
         b.appendLine("  - type: grid")
         b.appendLine("    columns: 2")
@@ -107,7 +99,6 @@ object DashboardExporter {
         b.appendButtonPress("API Fetch", "Key und Szenen aktualisieren", "mdi:cloud-download", "cyan", "button.android_casambi_bridge_casambi_api_fetch")
         b.appendButtonPress("Restart Bridge", "Dienst neu starten", "mdi:restart", "orange", "button.android_casambi_bridge_casambi_restart_bridge")
         b.appendLine("")
-
         b.appendLine("  - type: markdown")
         b.appendLine("    content: |")
         b.appendLine("      **Casambi Gruppen:** $groupInfo")
