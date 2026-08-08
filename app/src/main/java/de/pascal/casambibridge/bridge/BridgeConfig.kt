@@ -7,5 +7,8 @@ data class BridgeConfig(
     val tcpLogEnabled:Boolean=false, val tcpLogPort:Int=5555,
     val webInterfaceEnabled:Boolean=false, val webInterfacePort:Int=8080,
     val autoApiFetchEnabled:Boolean=false,
-    val webSocketLiveEnabled:Boolean=false
+    val webSocketLiveEnabled:Boolean=false,
+    val mqttEnabled:Boolean=true,
+    val directModeEnabled:Boolean=true,
+    val networkDiscoveryEnabled:Boolean=true
 )

@@ -14,7 +14,7 @@ object NsdDiscoveryAdvertiser {
 
     fun configure(context: Context, config: BridgeConfig) {
         synchronized(lock) {
-            if (!config.webInterfaceEnabled) {
+            if (!config.directModeEnabled || !config.networkDiscoveryEnabled) {
                 stopLocked(true)
                 return
             }
@@ -38,14 +38,17 @@ object NsdDiscoveryAdvertiser {
             this.port = port
             if (Build.VERSION.SDK_INT >= 21) {
                 setAttribute("name", serviceName)
-                setAttribute("version", "0.7.0")
+                setAttribute("version", "0.7.1")
                 setAttribute("api", "/api/info")
                 setAttribute("status", "/api/status")
                 setAttribute("ws", "/ws")
                 setAttribute("base_topic", config.baseTopic)
                 setAttribute("network", config.casambiNetworkName.ifBlank { "unknown" })
                 setAttribute("auth", "none")
-                setAttribute("mode", "hybrid")
+                setAttribute("mqtt", if (config.mqttEnabled) "on" else "off")
+                setAttribute("direct", if (config.directModeEnabled) "on" else "off")
+                setAttribute("discovery", if (config.networkDiscoveryEnabled) "on" else "off")
+                setAttribute("mode", if (config.mqttEnabled && config.directModeEnabled) "hybrid" else if (config.directModeEnabled) "direct" else "mqtt")
             }
         }
         val listener = object : NsdManager.RegistrationListener {

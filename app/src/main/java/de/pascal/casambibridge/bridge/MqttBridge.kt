@@ -31,6 +31,11 @@ class MqttBridge(
     }
 
     private fun connect() {
+        if (!config.mqttEnabled) {
+            RuntimeStatus.mqttConnected = false
+            log("MQTT Mode deaktiviert")
+            return
+        }
         if (config.mqttHost.isBlank()) {
             log("MQTT Host leer")
             return
@@ -132,6 +137,9 @@ class MqttBridge(
                 "tcp_logstream" -> 94
                 "auto_api_fetch" -> 95
                 "websocket_live" -> 96
+                "mqtt_enabled" -> 97
+                "direct_mode" -> 98
+                "network_discovery" -> 99
                 else -> -1
             }
             if (type < 0) {
@@ -162,7 +170,7 @@ class MqttBridge(
 
     fun publishTest() = publish(
         topic("test"),
-        JSONObject().put("bridge", "casambi").put("version", "0.7.0").toString(),
+        JSONObject().put("bridge", "casambi").put("version", "0.7.1").toString(),
         false
     )
 
@@ -180,9 +188,12 @@ class MqttBridge(
             .put("name", c.casambiNetworkName.ifBlank { "Casambi Jungle Bridge" })
             .put("base_topic", c.baseTopic)
             .put("web_url", webUrl)
-            .put("version", "0.7.0")
+            .put("version", "0.7.1")
             .put("manufacturer", "Casambi Jungle")
             .put("model", "Android BLE Bridge")
+            .put("mqtt", if (c.mqttEnabled) "on" else "off")
+            .put("direct", if (c.directModeEnabled) "on" else "off")
+            .put("discovery", if (c.networkDiscoveryEnabled) "on" else "off")
             .put("units", unitsArray)
             .put("scenes", scenesArray)
         publish(topic("discovery"), payload.toString(), true)
@@ -191,11 +202,14 @@ class MqttBridge(
 
     fun publishHacsDiagnostics(c: BridgeConfig = config) {
         val fmt = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.GERMANY)
-        publish(topic("diagnostics/bridge_version"), "0.7.0", true)
+        publish(topic("diagnostics/bridge_version"), "0.7.1", true)
         publish(topic("diagnostics/last_sync"), if (RuntimeStatus.lastSyncMillis > 0L) fmt.format(Date(RuntimeStatus.lastSyncMillis)) else "never", true)
         publish(topic("diagnostics/active_scene"), RuntimeStatus.lastSceneName.ifBlank { "none" }, true)
         publish(topic("diagnostics/web_interface_url"), if (c.webInterfaceEnabled) localWebUrl(c) else "disabled", true)
         publish(topic("settings/websocket_live/state"), if (c.webSocketLiveEnabled) "ON" else "OFF", true)
+        publish(topic("settings/mqtt_enabled/state"), if (c.mqttEnabled) "ON" else "OFF", true)
+        publish(topic("settings/direct_mode/state"), if (c.directModeEnabled) "ON" else "OFF", true)
+        publish(topic("settings/network_discovery/state"), if (c.networkDiscoveryEnabled) "ON" else "OFF", true)
     }
 
     fun publishScenesList(scenes: List<CasambiSceneInfo>) {
@@ -303,10 +317,10 @@ class MqttBridge(
     }
 
     fun publishDiscoveryForDiagnostics() {
-        log("MQTT Diagnostics Discovery in v0.7.0 voruebergehend deaktiviert")
+        log("MQTT Diagnostics Discovery in v0.7.1 voruebergehend deaktiviert")
     }
     fun publishDiagnosticStates() {
-        // v0.7.0: disabled to avoid MQTT publish storms on Android/Paho.
+        // v0.7.1: disabled to avoid MQTT publish storms on Android/Paho.
         return
     }
     fun publishBridgeStatus(bridge: String, ble: String) {
@@ -318,6 +332,9 @@ class MqttBridge(
 
     fun publishDiscoveryForBridgeSettings() {
         val settings = listOf(
+            Triple("mqtt_enabled", "Casambi MQTT Mode", "casambi_bridge_mqtt_enabled"),
+            Triple("direct_mode", "Casambi Direct Mode", "casambi_bridge_direct_mode"),
+            Triple("network_discovery", "Casambi Network Discovery", "casambi_bridge_network_discovery"),
             Triple("webinterface", "Casambi Web Interface", "casambi_bridge_webinterface"),
             Triple("smb_logging", "Casambi SMB Logging", "casambi_bridge_smb_logging"),
             Triple("tcp_logstream", "Casambi TCP Logstream", "casambi_bridge_tcp_logstream"),
@@ -347,6 +364,9 @@ class MqttBridge(
         publish(topic("settings/tcp_logstream/state"), if (c.tcpLogEnabled) "ON" else "OFF", true)
         publish(topic("settings/auto_api_fetch/state"), if (c.autoApiFetchEnabled) "ON" else "OFF", true)
         publish(topic("settings/websocket_live/state"), if (c.webSocketLiveEnabled) "ON" else "OFF", true)
+        publish(topic("settings/mqtt_enabled/state"), if (c.mqttEnabled) "ON" else "OFF", true)
+        publish(topic("settings/direct_mode/state"), if (c.directModeEnabled) "ON" else "OFF", true)
+        publish(topic("settings/network_discovery/state"), if (c.networkDiscoveryEnabled) "ON" else "OFF", true)
     }
 
     fun publishState(state: String, brightness: Int) = publishLightState(1, state, brightness, false, "", "Casambi Light 1")
@@ -395,7 +415,7 @@ class MqttBridge(
         .put("name", "Android Casambi Bridge")
         .put("manufacturer", "Pascal/Copilot")
         .put("model", "Android BLE Bridge")
-        .put("sw_version", "0.7.0")
+        .put("sw_version", "0.7.1")
 
     private fun publish(topicName: String, payload: String, retained: Boolean) {
         val mqttClient = client ?: return

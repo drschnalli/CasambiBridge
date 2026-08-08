@@ -100,7 +100,7 @@ class CasambiBridgeService : Service() {
         RuntimeCounts.groupCount = SceneStore.loadGroups(this).size
         RuntimeCounts.unitCount = units.size.coerceAtLeast(1)
         ble = createBle(config, true, generation)
-        mqtt = MqttBridge(config, LogBus::log) { cmd ->
+        mqtt = if (config.mqttEnabled) MqttBridge(config, LogBus::log) { cmd ->
             LogBus.log("MQTT Command Callback Unit ${cmd.unitId} type=${cmd.targetType} state=${cmd.state ?: "-"} brightness=${cmd.brightness ?: -1} effective=${cmd.effectiveBrightness}")
             handleSpecialOrSubmit(cmd)
         }.also {
@@ -110,7 +110,7 @@ class CasambiBridgeService : Service() {
             it.publishDiscoveryForScenes(scenes)
             it.publishDiscoveryForStatusEntities()
             it.publishDiscoveryForBridgeSettings()
-            // v0.7.0: diagnostics discovery/state publishing remains disabled at startup to prevent MQTT publish storms.
+            // v0.7.1: diagnostics discovery/state publishing remains disabled at startup to prevent MQTT publish storms.
             it.publishHacsDiscovery(config, units, scenes)
             it.publishBridgeSettingsState(config)
             it.publishScenesList(scenes)
@@ -119,7 +119,7 @@ class CasambiBridgeService : Service() {
             it.publishActiveScene(scenes)
             it.publishBridgeStatus("online", "connecting")
             it.publishState("OFF", 0)
-        }
+        } else null
         runtimeActive = true
         bridgeStarting = false
         ble?.connect()
@@ -173,6 +173,9 @@ class CasambiBridgeService : Service() {
             94 -> current.copy(tcpLogEnabled = enabled)
             95 -> current.copy(autoApiFetchEnabled = enabled)
             96 -> current.copy(webSocketLiveEnabled = enabled)
+            97 -> current.copy(mqttEnabled = enabled)
+            98 -> current.copy(directModeEnabled = enabled, webInterfaceEnabled = current.webInterfaceEnabled || enabled)
+            99 -> current.copy(networkDiscoveryEnabled = enabled)
             else -> current
         }
         ConfigStore.save(this, updated)
@@ -188,6 +191,9 @@ class CasambiBridgeService : Service() {
             94 -> "TCP Logstream"
             95 -> "Auto API Fetch"
             96 -> "WebSocket Live Updates"
+            97 -> "MQTT Mode"
+            98 -> "Direct Mode"
+            99 -> "Network Discovery"
             else -> "Setting"
         }
         LogBus.log("HA Settings: $label ${if (enabled) "ON" else "OFF"}")
@@ -218,7 +224,7 @@ class CasambiBridgeService : Service() {
                     RuntimeStatus.markScene(command.unitId, sceneName)
                     mqtt?.publishActiveScene(scenes)
                 } else {
-                    // v0.7.0: Any manual unit/group/light command coming from MQTT means the previous scene
+                    // v0.7.1: Any manual unit/group/light command coming from MQTT means the previous scene
                     // is no longer guaranteed to be active. Keep Android UI, Web UI, MQTT and HACS in sync.
                     if (RuntimeStatus.lastSceneId >= 0 || RuntimeStatus.lastSceneName.isNotBlank()) {
                         RuntimeStatus.clearScene()

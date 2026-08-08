@@ -32,7 +32,10 @@ object ConfigStore {
             p.getBoolean("webInterfaceEnabled", false),
             p.getInt("webInterfacePort", 8080),
             p.getBoolean("autoApiFetchEnabled", false),
-            p.getBoolean("webSocketLiveEnabled", false)
+            p.getBoolean("webSocketLiveEnabled", false),
+            p.getBoolean("mqttEnabled", true),
+            p.getBoolean("directModeEnabled", true),
+            p.getBoolean("networkDiscoveryEnabled", true)
         )
     }
 
@@ -63,6 +66,9 @@ object ConfigStore {
             .putInt("webInterfacePort", c.webInterfacePort)
             .putBoolean("autoApiFetchEnabled", c.autoApiFetchEnabled)
             .putBoolean("webSocketLiveEnabled", c.webSocketLiveEnabled)
+            .putBoolean("mqttEnabled", c.mqttEnabled)
+            .putBoolean("directModeEnabled", c.directModeEnabled)
+            .putBoolean("networkDiscoveryEnabled", c.networkDiscoveryEnabled)
             .apply()
     }
 }
