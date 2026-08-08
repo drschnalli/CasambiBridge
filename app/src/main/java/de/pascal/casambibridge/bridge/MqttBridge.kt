@@ -203,7 +203,7 @@ class MqttBridge(
             .put("name", "Casambi Unit 1 Online")
             .put("unique_id", "casambi_bridge_unit_1_online")
             .put("state_topic", topic("light/1/state"))
-            .put("value_template", "{{ value_json.online }}")
+            .put("value_template", "{% if value_json.online %}ON{% else %}OFF{% endif %}")
             .put("availability_topic", topic("availability"))
             .put("device", dev)
         publish("${config.discoveryPrefix}/binary_sensor/casambi_bridge/unit_1_online/config", unit.toString(), true)
@@ -264,7 +264,7 @@ class MqttBridge(
         publish(topic("settings/auto_api_fetch/state"), if (c.autoApiFetchEnabled) "ON" else "OFF", true)
     }
 
-    fun publishState(state: String, brightness: Int) = publishLightState(1, state, brightness, true, "")
+    fun publishState(state: String, brightness: Int) = publishLightState(1, state, brightness, false, "")
 
     fun publishLightState(id: Int, state: String, brightness: Int, online: Boolean, raw: String) {
         val payload = JSONObject()
@@ -289,7 +289,7 @@ class MqttBridge(
         .put("identifiers", "casambi_bridge_android")
         .put("name", "Android Casambi Bridge")
         .put("manufacturer", "Pascal/Copilot")
-        .put("model", "v0.4.1")
+        .put("model", "v0.4.2")
 
     private fun publish(topicName: String, payload: String, retained: Boolean) {
         val mqttClient = client ?: return

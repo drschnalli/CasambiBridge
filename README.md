@@ -1,62 +1,49 @@
-# Casambi Bridge v0.4.1
+# Casambi Bridge v0.4.2
 
-v0.4.1 erweitert die Home-Assistant-Anbindung um sinnvolle Bridge-Einstellungen als MQTT-Schalter.
+v0.4.2 ist ein Home-Assistant-Hotfix für `Casambi Unit 1 Online`.
 
-## Neu in v0.4.1
+## Fix in v0.4.2
 
-### Home Assistant Bridge Settings
+### Casambi Unit 1 Online nicht mehr `Unbekannt`
 
-Home Assistant bekommt zusätzliche Switch-Entities:
+Home Assistant zeigte den Binary Sensor `Casambi Unit 1 Online` als `Unbekannt`, obwohl die App selbst `Unit 1 Connected / Online` korrekt erkannte.
 
-```text
-Casambi Web Interface
-Casambi SMB Logging
-Casambi TCP Logstream
-Casambi Auto API Fetch
-```
-
-Damit können wichtige Bridge-Funktionen direkt aus Home Assistant ein- und ausgeschaltet werden.
-
-### MQTT Topics
+Ursache:
 
 ```text
-casambi_bridge/settings/webinterface/set
-casambi_bridge/settings/webinterface/state
-
-casambi_bridge/settings/smb_logging/set
-casambi_bridge/settings/smb_logging/state
-
-casambi_bridge/settings/tcp_logstream/set
-casambi_bridge/settings/tcp_logstream/state
-
-casambi_bridge/settings/auto_api_fetch/set
-casambi_bridge/settings/auto_api_fetch/state
+value_template = {{ value_json.online }}
 ```
 
-Payloads:
+Das lieferte `true`/`false`, während der MQTT Binary Sensor ohne weitere Payload-Angaben standardmäßig `ON`/`OFF` erwartet.
+
+Gefixt auf:
 
 ```text
-ON
-OFF
+{% if value_json.online %}ON{% else %}OFF{% endif %}
 ```
 
-### Verhalten
+Zusätzlich wird der Initial-State nicht mehr mit `online=true` veröffentlicht, sondern erst einmal sauber mit `online=false`, bis der echte BLE-UnitState kommt.
 
-Wenn Home Assistant einen Schalter betätigt:
+## Nach dem Update
 
-- Konfiguration wird gespeichert
-- Webinterface/SMB/TCP/Auto-API-Fetch wird direkt aktualisiert
-- MQTT State Topic wird aktualisiert
-- Signal-Canopy-LEDs reagieren über die bestehende App-Logik
+Nach Installation und Start sollte Home Assistant das retained Discovery-Config-Payload aktualisieren.
+
+Falls `Casambi Unit 1 Online` weiterhin kurz unbekannt bleibt:
+
+1. Bridge einmal neu starten
+2. Warten, bis `UnitState parsing fertig count=1` im Log erscheint
+3. In Home Assistant MQTT-Entity neu laden oder kurz warten
 
 ## Weiterhin enthalten
 
+- Home Assistant Bridge Settings Switches
+- Casambi Web Interface Switch
+- SMB Logging Switch
+- TCP Logstream Switch
+- Auto API Fetch Switch
 - 🌴 Casambi Jungle Header
 - powered by Sambesi
 - Jungle Tabs
-- SETUP-Reiter mit Passwortfeld
-- MQTT verbunden LED
-- Home Assistant Discovery für Licht, Szenen, Status und Buttons
 
 ## Build
 
