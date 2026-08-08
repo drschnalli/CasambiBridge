@@ -107,7 +107,7 @@ class MainActivity : AppCompatActivity() {
 
         val headerRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         headerRow.addView(TextView(this).apply {
-            text = "CASAMBI BRIDGE // v0.3.5"
+            text = "CASAMBI BRIDGE // v0.3.7"
             textSize = 21f
             setTextColor(leaf)
             setTypeface(Typeface.MONOSPACE, Typeface.BOLD)
@@ -152,9 +152,22 @@ class MainActivity : AppCompatActivity() {
         val pages = listOf(homePage, setupPage, controlPage, settingsPage, advancedPage)
         pages.forEach { root.addView(it) }
         var currentPage: LinearLayout = homePage
+        val tabButtons = linkedMapOf<LinearLayout, Button>()
+        fun styleTab(button: Button, active: Boolean) {
+            if (active) {
+                button.setBackgroundColor(cyan)
+                button.setTextColor(Color.rgb(0, 18, 8))
+                button.textSize = 8.5f
+            } else {
+                button.setBackgroundColor(leaf)
+                button.setTextColor(Color.rgb(0, 18, 8))
+                button.textSize = 8f
+            }
+        }
 
         fun showPage(target: LinearLayout) {
             pages.forEach { it.visibility = if (it == target) View.VISIBLE else View.GONE }
+            tabButtons.forEach { (page, button) -> styleTab(button, page == target) }
         }
 
         fun tab(text: String, target: LinearLayout): Button = Button(this).apply {
@@ -164,14 +177,16 @@ class MainActivity : AppCompatActivity() {
             setTextColor(Color.rgb(0, 18, 8))
             setBackgroundColor(leaf)
             setPadding(2, 2, 2, 2)
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
+                setMargins(2, 0, 2, 0)
+            }
             setOnClickListener { showPage(target) }
         }
-        tabBar.addView(tab("HOME", homePage))
-        tabBar.addView(tab("SETUP", setupPage))
-        tabBar.addView(tab("CTRL", controlPage))
-        tabBar.addView(tab("SET", settingsPage))
-        tabBar.addView(tab("ADV", advancedPage))
+        tabButtons[homePage] = tab("HOME", homePage).also { tabBar.addView(it) }
+        tabButtons[setupPage] = tab("SETUP", setupPage).also { tabBar.addView(it) }
+        tabButtons[controlPage] = tab("CTRL", controlPage).also { tabBar.addView(it) }
+        tabButtons[settingsPage] = tab("SET", settingsPage).also { tabBar.addView(it) }
+        tabButtons[advancedPage] = tab("ADV", advancedPage).also { tabBar.addView(it) }
         showPage(homePage)
 
         fun card(title: String): LinearLayout {
