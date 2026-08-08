@@ -104,7 +104,7 @@ class CasambiBridgeService : Service() {
             it.publishDiscoveryForScenes(SceneStore.loadScenes(this))
             it.publishDiscoveryForStatusEntities()
             it.publishDiscoveryForBridgeSettings()
-            // v0.5.4: diagnostics discovery/state publishing remains disabled at startup to prevent MQTT publish storms.
+            // v0.5.5: diagnostics discovery/state publishing remains disabled at startup to prevent MQTT publish storms.
             it.publishBridgeSettingsState(config)
             it.publishBridgeStatus("online", "connecting")
             it.publishState("OFF", 0)
