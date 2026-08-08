@@ -6,6 +6,7 @@ import jcifs.smb.SmbFileOutputStream
 
 object DashboardExporter {
     private const val FILE = "casambi_jungle_dashboard.yaml"
+    private const val DIRECT_FILE = "casambi_jungle_direct_dashboard.yaml"
 
     fun exportToSmb(context: Context, config: BridgeConfig): String {
         val yaml = generateYaml(context, config)
@@ -15,6 +16,48 @@ object DashboardExporter {
         val url = dir + FILE
         SmbFileOutputStream(SmbFile(url, ctx), false).use { it.write(yaml.toByteArray(Charsets.UTF_8)) }
         return url
+    }
+
+    fun exportDirectToSmb(context: Context, config: BridgeConfig): String {
+        val yaml = generateDirectYaml(context, config)
+        val ctx = DebugExporter.smbContext(config)
+        val dir = DebugExporter.smbDir(config)
+        SmbFile(dir, ctx).use { if (!it.exists()) it.mkdirs() }
+        val url = dir + DIRECT_FILE
+        SmbFileOutputStream(SmbFile(url, ctx), false).use { it.write(yaml.toByteArray(Charsets.UTF_8)) }
+        return url
+    }
+
+    fun generateDirectYaml(context: Context, config: BridgeConfig): String {
+        val networkName = yamlText(config.casambiNetworkName.ifBlank { "Casambi Bridge" })
+        val webUrl = if (config.webInterfaceEnabled || config.directModeEnabled) webUrlHint(config) else ""
+        return buildString {
+            appendLine("type: vertical-stack")
+            appendLine("cards:")
+            appendLine("  - type: markdown")
+            appendLine("    content: |")
+            appendLine("      ## Casambi Jungle Direct")
+            appendLine("      Netzwerk: $networkName")
+            appendLine("      ")
+            appendLine("      Dieses Dashboard nutzt die Casambi Jungle Custom Card und funktioniert ohne MQTT, wenn HACS im Direct Mode eingerichtet ist.")
+            if (webUrl.isNotBlank()) appendLine("      Webinterface: $webUrl")
+            appendLine("")
+            appendLine("  - type: custom:casambi-jungle-card")
+            appendLine("    title: "Casambi Jungle Direct"")
+            appendLine("    # Die Card erkennt Casambi/HACS Entitaeten automatisch.")
+            appendLine("    # Falls mehrere Bridges/Units vorhanden sind, bitte im visuellen Editor Auto-detect ausführen oder Entity IDs manuell pinnen.")
+        }
+    }
+
+    private fun webUrlHint(config: BridgeConfig): String {
+        val ip = runCatching {
+            java.net.NetworkInterface.getNetworkInterfaces().toList()
+                .flatMap { it.inetAddresses.toList() }
+                .filterIsInstance<java.net.Inet4Address>()
+                .firstOrNull { !it.isLoopbackAddress && !it.hostAddress.startsWith("169.254") }
+                ?.hostAddress
+        }.getOrNull() ?: ""
+        return if (ip.isBlank()) "" else "http://$ip:${config.webInterfacePort.coerceIn(1024, 65535)}"
     }
 
     fun generateYaml(context: Context, config: BridgeConfig): String {

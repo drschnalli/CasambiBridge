@@ -159,10 +159,21 @@ object WebControlServer {
                 val c = ConfigStore.load(ctx)
                 "text/yaml; charset=utf-8" to DashboardExporter.generateYaml(ctx, c)
             }
+            "/dashboard-direct-yaml" -> {
+                val ctx = appContext ?: return "text/plain; charset=utf-8" to "No context"
+                val c = ConfigStore.load(ctx)
+                "text/yaml; charset=utf-8" to DashboardExporter.generateDirectYaml(ctx, c)
+            }
             "/dashboard-export" -> {
                 val ctx = appContext ?: return "text/plain; charset=utf-8" to "No context"
                 val c = ConfigStore.load(ctx)
-                val msg = try { "Dashboard YAML gespeichert: ${DashboardExporter.exportToSmb(ctx, c)}" } catch (t: Throwable) { "Dashboard Export Fehler: ${t.message}" }
+                val msg = try { "MQTT Dashboard YAML gespeichert: ${DashboardExporter.exportToSmb(ctx, c)}" } catch (t: Throwable) { "MQTT Dashboard Export Fehler: ${t.message}" }
+                "text/html; charset=utf-8" to dashboard(msg)
+            }
+            "/dashboard-direct-export" -> {
+                val ctx = appContext ?: return "text/plain; charset=utf-8" to "No context"
+                val c = ConfigStore.load(ctx)
+                val msg = try { "Direct Dashboard YAML gespeichert: ${DashboardExporter.exportDirectToSmb(ctx, c)}" } catch (t: Throwable) { "Direct Dashboard Export Fehler: ${t.message}" }
                 "text/html; charset=utf-8" to dashboard(msg)
             }
             "/backup" -> {
@@ -278,7 +289,7 @@ object WebControlServer {
             RuntimeStatus.markSync()
             runCatching { DashboardExporter.exportToSmb(ctx, updated) }
             ctx.startService(Intent(ctx, CasambiBridgeService::class.java).apply { action = CasambiBridgeService.ACTION_START })
-            "API Fetch OK: ${result.rawSummary}. Dashboard wurde neu erzeugt."
+            "API Fetch OK: ${result.rawSummary}. MQTT Dashboard wurde neu erzeugt."
         } catch (t: Throwable) {
             "API Fetch Fehler: ${t.message}"
         }
@@ -320,7 +331,7 @@ object WebControlServer {
                 val size = if (f.isDirectory) "DIR" else "${f.length()} B"
                 "<div class='file'><span>${esc(name)}</span><small>$size</small><a class='btn mini' href='/file?name=$enc'>VIEW</a></div>"
             }
-            page("SMB Browser", "<div class='toolbar'><a class='btn ghost' href='/'>HOME</a><a class='btn ghost' href='/dashboard-yaml'>YAML anzeigen</a><a class='btn ghost' href='/dashboard-export'>YAML neu schreiben</a></div>$rows")
+            page("SMB Browser", "<div class='toolbar'><a class='btn ghost' href='/'>HOME</a><a class='btn ghost' href='/dashboard-yaml'>MQTT YAML anzeigen</a><a class='btn ghost' href='/dashboard-export'>MQTT YAML schreiben</a><a class='btn ghost' href='/dashboard-direct-yaml'>Direct YAML anzeigen</a><a class='btn ghost' href='/dashboard-direct-export'>Direct YAML schreiben</a></div>$rows")
         } catch (t: Throwable) {
             page("SMB Browser", "<p class='dangerText'>SMB Fehler: ${esc(t.message ?: t.javaClass.simpleName)}</p>")
         }
@@ -365,7 +376,7 @@ object WebControlServer {
   <section class='card'><h2>Live Status</h2><div id='statusGrid' class='statusGrid'>Lade Status...</div><div class='wsHint'>Live Mode: <b>${if (c.webSocketLiveEnabled) "WebSocket" else "Polling"}</b></div><script>window.CASAMBI_WS=${c.webSocketLiveEnabled};</script><script>${statusScript()}</script></section>
   <section id='lightCard' class='card lightCard off'><h2>${esc(unitName)}</h2><div class='powerPanel'><div id='powerOrb' class='powerOrb'>OFF</div><div class='powerMeta'><div id='lightStateText' class='stateTitle'>Licht aus</div><div id='brightnessText' class='stateSub'>Brightness 0%</div><div class='bar'><span id='brightnessBar'></span></div><div class='sliderWrap'><input id='brightnessSlider' class='jungleSlider' type='range' min='0' max='255' value='0'><div class='sliderMeta'><span>0%</span><b id='sliderValue'>0%</b><span>100%</span></div></div></div></div><div class='controlRow'><a id='cmdOn' class='cmdBtn onCmd' href='/command?state=ON'>ON</a><a id='cmdOff' class='cmdBtn offCmd active' href='/command?state=OFF'>OFF</a><a id='cmd40' class='cmdBtn dimCmd' href='/command?state=ON&brightness=102'>40%</a></div></section>
   <section class='card sceneCard'><h2>Szenen</h2><div class='activeScene'><span>Aktive Szene</span><b id='activeSceneName'>keine</b></div><div class='controlRow'>$sceneButtons</div></section>
-  <section class='card'><h2>Tools</h2><div class='controlRow'><a class='btn ghost' href='/fetch-api'>API Fetch</a><a class='btn ghost' href='/dashboard-export'>YAML neu schreiben</a><a class='btn ghost' href='/dashboard-yaml'>YAML anzeigen</a><a class='btn ghost' href='/files'>SMB Browser</a><a class='btn ghost' href='/logs'>Live Log</a><a class='btn ghost' href='/backup'>Backup SMB</a><a class='btn ghost' href='/toggle-ws'>WebSocket ${if (c.webSocketLiveEnabled) "AUS" else "EIN"}</a></div></section>
+  <section class='card'><h2>Tools</h2><div class='controlRow'><a class='btn ghost' href='/fetch-api'>API Fetch</a><a class='btn ghost' href='/dashboard-export'>MQTT YAML schreiben</a><a class='btn ghost' href='/dashboard-yaml'>MQTT YAML anzeigen</a><a class='btn ghost' href='/dashboard-direct-export'>Direct YAML schreiben</a><a class='btn ghost' href='/dashboard-direct-yaml'>Direct YAML anzeigen</a><a class='btn ghost' href='/files'>SMB Browser</a><a class='btn ghost' href='/logs'>Live Log</a><a class='btn ghost' href='/backup'>Backup SMB</a><a class='btn ghost' href='/toggle-ws'>WebSocket ${if (c.webSocketLiveEnabled) "AUS" else "EIN"}</a></div></section>
   <section class='card wide'><h2>Live Log Preview</h2><pre id='logBox'>Lade Log...</pre><script>${logScript()}</script></section>
 </div>
 """)

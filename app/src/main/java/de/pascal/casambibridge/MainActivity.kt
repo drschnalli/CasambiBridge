@@ -110,7 +110,7 @@ class MainActivity : AppCompatActivity() {
 
         val headerRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         headerRow.addView(TextView(this).apply {
-            text = "🌴 CASAMBI JUNGLE // v0.7.1"
+            text = "🌴 CASAMBI JUNGLE // v0.7.2"
             textSize = 21f
             setTextColor(leaf)
             setTypeface(Typeface.MONOSPACE, Typeface.BOLD)
@@ -149,7 +149,7 @@ class MainActivity : AppCompatActivity() {
             setPadding(0, 0, 0, 10)
             setBackgroundColor(Color.rgb(2, 12, 8))
         }
-        root.addView(tabBar)
+        // Tabs are added below the pages so they stay out of the way on small screens.
 
         fun page(): LinearLayout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -162,6 +162,7 @@ class MainActivity : AppCompatActivity() {
         val advancedPage = page()
         val pages = listOf(homePage, setupPage, controlPage, settingsPage, advancedPage)
         pages.forEach { root.addView(it) }
+        root.addView(tabBar)
         var currentPage: LinearLayout = homePage
         val tabButtons = linkedMapOf<LinearLayout, Button>()
         fun styleTab(button: Button, active: Boolean) {
@@ -290,31 +291,35 @@ class MainActivity : AppCompatActivity() {
         }
 
         currentPage = homePage
-        val jungleCard = card("🌴 Casambi Jungle")
-        jungleCard.addView(TextView(this).apply {
+        val statusCard = card("Djungle Monitor")
+        statusCard.addView(TextView(this).apply {
             val sceneCount = SceneStore.loadScenes(this@MainActivity).size
             val networkName = c.casambiNetworkName.ifBlank { "nicht gesetzt" }
-            val mqttText = if (c.mqttHost.isNotBlank()) "📡 MQTT ${c.mqttHost}:${c.mqttPort}" else "📡 MQTT nicht eingerichtet"
-            text = "🌴 $networkName\n💡 Units: 1  |  🎭 Scenes: $sceneCount\n$mqttText"
-            textSize = 12f
+            val mqttText = if (c.mqttEnabled && c.mqttHost.isNotBlank()) "MQTT aktiv" else "MQTT aus"
+            val directText = if (c.directModeEnabled) "Direct aktiv" else "Direct aus"
+            text = "🌴 $networkName  •  💡 Units: 1  •  🎭 Scenes: $sceneCount\n$mqttText  •  $directText"
+            textSize = 11f
             setTextColor(textMain)
             setTypeface(Typeface.MONOSPACE, Typeface.BOLD)
-            setPadding(0, 6, 0, 2)
+            setPadding(0, 6, 0, 8)
         })
-
-        val statusCard = card("Signal Canopy")
+        val sigGrid1 = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         val sigGrid1 = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         statusCard.addView(sigGrid1)
-        bleRxLed = signalRow(sigGrid1, "BLE RX")
-        bleTxLed = signalRow(sigGrid1, "BLE TX")
-        mqttStatusLed = signalRow(sigGrid1, "MQTT verbunden")
-        mqttInLed = signalRow(sigGrid1, "MQTT IN")
-        mqttOutLed = signalRow(sigGrid1, "MQTT OUT")
-        smbLed = signalRow(sigGrid1, "SMB Logging")
-        webLed = signalRow(sigGrid1, "Webserver")
-        tcpLed = signalRow(sigGrid1, "TCP Logstream")
-        directLed = signalRow(sigGrid1, "Direct API")
-        mdnsLed = signalRow(sigGrid1, "mDNS Discovery")
+        val sigRowOne = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        val sigRowTwo = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        sigGrid1.addView(sigRowOne)
+        sigGrid1.addView(sigRowTwo)
+        bleRxLed = signalRow(sigRowOne, "BLE RX")
+        bleTxLed = signalRow(sigRowOne, "BLE TX")
+        mqttStatusLed = signalRow(sigRowOne, "MQTT")
+        directLed = signalRow(sigRowOne, "Direct")
+        mdnsLed = signalRow(sigRowOne, "mDNS")
+        mqttInLed = signalRow(sigRowTwo, "MQTT IN")
+        mqttOutLed = signalRow(sigRowTwo, "MQTT OUT")
+        smbLed = signalRow(sigRowTwo, "SMB")
+        webLed = signalRow(sigRowTwo, "Web")
+        tcpLed = signalRow(sigRowTwo, "TCP")
         statusText = TextView(this).apply {
             text = "Live-Log in der App entfernt. Diagnose laeuft primaer ueber SMB."
             textSize = 11f
@@ -504,13 +509,15 @@ class MainActivity : AppCompatActivity() {
         val scanBt = actionGridButton("SCAN CASAMBI")
         val backup = actionGridButton("BACKUP SMB")
         val restore = actionGridButton("RESTORE SMB")
-        val dashboardExport = actionGridButton("DASHBOARD")
+        val dashboardExport = actionGridButton("MQTT YAML")
+        val dashboardDirectExport = actionGridButton("DIRECT YAML")
         val spacer = actionGridButton(" ").apply { isEnabled = false; setBackgroundColor(panel) }
         actionRow(start, stop)
         actionRow(fetchApi, scanBt)
         actionRow(save, mqttTest)
         actionRow(ble, backup)
         actionRow(restore, dashboardExport)
+        actionRow(dashboardDirectExport, spacer)
 
         setContentView(scroll)
 
@@ -811,9 +818,20 @@ class MainActivity : AppCompatActivity() {
             Thread {
                 try {
                     val url = DashboardExporter.exportToSmb(this@MainActivity, cfg)
-                    runOnUiThread { statusText.text = "Dashboard YAML exportiert"; LogBus.log("Dashboard YAML exportiert: $url") }
+                    runOnUiThread { statusText.text = "MQTT Dashboard YAML exportiert"; LogBus.log("MQTT Dashboard YAML exportiert: $url") }
                 } catch (t: Throwable) {
-                    runOnUiThread { statusText.text = "Dashboard Export Fehler"; LogBus.log("Dashboard Export Fehler: ${t.message}") }
+                    runOnUiThread { statusText.text = "MQTT Dashboard Export Fehler"; LogBus.log("MQTT Dashboard Export Fehler: ${t.message}") }
+                }
+            }.start()
+        }
+        dashboardDirectExport.setOnClickListener {
+            val cfg = currentConfig()
+            Thread {
+                try {
+                    val url = DashboardExporter.exportDirectToSmb(this@MainActivity, cfg)
+                    runOnUiThread { statusText.text = "Direct Dashboard YAML exportiert"; LogBus.log("Direct Dashboard YAML exportiert: $url") }
+                } catch (t: Throwable) {
+                    runOnUiThread { statusText.text = "Direct Dashboard Export Fehler"; LogBus.log("Direct Dashboard Export Fehler: ${t.message}") }
                 }
             }.start()
         }
