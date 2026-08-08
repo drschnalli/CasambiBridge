@@ -10,5 +10,6 @@ data class BridgeConfig(
     val webSocketLiveEnabled:Boolean=false,
     val mqttEnabled:Boolean=true,
     val directModeEnabled:Boolean=true,
-    val networkDiscoveryEnabled:Boolean=true
+    val networkDiscoveryEnabled:Boolean=true,
+    val returnAppPackage:String=""
 )

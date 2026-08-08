@@ -17,9 +17,12 @@ import android.text.Editable
 import android.text.InputType
 import android.text.TextWatcher
 import android.view.View
+import android.widget.AdapterView
+import android.widget.ArrayAdapter
 import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
+import android.widget.Spinner
 import android.widget.ScrollView
 import android.widget.SeekBar
 import android.widget.Switch
@@ -50,6 +53,9 @@ class MainActivity : AppCompatActivity() {
     private lateinit var statusText: TextView
     private lateinit var bleRxLed: TextView
     private lateinit var bleTxLed: TextView
+    private lateinit var bleConnectedLed: TextView
+    private lateinit var directRxLed: TextView
+    private lateinit var directTxLed: TextView
     private lateinit var mqttStatusLed: TextView
     private lateinit var mqttInLed: TextView
     private lateinit var mqttOutLed: TextView
@@ -61,6 +67,8 @@ class MainActivity : AppCompatActivity() {
     private var lampLedRef: TextView? = null
     private var lampValueRef: TextView? = null
     private var sceneRefresh: (() -> Unit)? = null
+    private var mqttMonitorVisible: Boolean = false
+    private var selectedReturnAppPackage: String = ""
 
     private val bg = Color.rgb(3, 17, 12)
     private val panel = Color.rgb(7, 28, 20)
@@ -90,8 +98,10 @@ class MainActivity : AppCompatActivity() {
         when {
             line.contains("Notify") || line.contains("UnitState") || line.contains("Authentication successful") -> flash(bleRxLed)
             line.contains("TX Frame") || line.contains("TX Encrypted") || line.contains("GATT write") -> flash(bleTxLed)
-            line.contains("MQTT Command Unit") || line.contains("MQTT Command Callback") -> flash(mqttInLed)
-            line.contains("MQTT State Unit") || line.contains("publish", ignoreCase = true) -> flash(mqttOutLed)
+            (line.contains("MQTT Command Unit") || line.contains("MQTT Command Callback")) && mqttMonitorVisible -> flash(mqttInLed)
+            (line.contains("MQTT State Unit") || line.contains("publish", ignoreCase = true)) && mqttMonitorVisible -> flash(mqttOutLed)
+            line.contains("Direct API RX") -> flash(directRxLed)
+            line.contains("Direct API TX") || line.contains("Direct Command") -> flash(directTxLed)
         }
     }
 
@@ -99,6 +109,7 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         requestPermissionsIfNeeded()
         val c = ConfigStore.load(this)
+        selectedReturnAppPackage = c.returnAppPackage
 
         val scroll = ScrollView(this).apply { setBackgroundColor(bg) }
         val root = LinearLayout(this).apply {
@@ -108,33 +119,61 @@ class MainActivity : AppCompatActivity() {
         }
         scroll.addView(root)
 
-        val headerRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        headerRow.addView(TextView(this).apply {
-            text = "🌴 CASAMBI JUNGLE // v0.7.2"
-            textSize = 21f
+        val headerBlock = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        headerBlock.addView(TextView(this).apply {
+            text = "🌴 CASAMBI JUNGLE\n// v0.7.3"
+            textSize = 20f
             setTextColor(leaf)
             setTypeface(Typeface.MONOSPACE, Typeface.BOLD)
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            setPadding(0, 0, 0, 6)
         })
-        headerRow.addView(Button(this).apply {
-            text = "FORCE STOP"
-            textSize = 9f
+        val topButtonRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        fun topButton(label: String, bgColor: Int): Button = Button(this).apply {
+            text = label
+            textSize = 8.5f
             setTextColor(Color.WHITE)
             setTypeface(Typeface.MONOSPACE, Typeface.BOLD)
-            setBackgroundColor(Color.rgb(78, 0, 100))
-            setOnClickListener {
-                startService(Intent(this@MainActivity, CasambiBridgeService::class.java).apply { action = CasambiBridgeService.ACTION_STOP })
-                finishAndRemoveTask()
-                ui.postDelayed({ Process.killProcess(Process.myPid()) }, 250)
+            setBackgroundColor(bgColor)
+            isAllCaps = false
+            minHeight = 0
+            minimumHeight = 0
+            setPadding(4, 8, 4, 8)
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply { setMargins(3, 0, 3, 0) }
+        }
+        val backgroundButton = topButton("BACKGROUND", Color.rgb(0, 84, 112))
+        val returnAppButton = topButton("RETURN APP", Color.rgb(0, 112, 82))
+        val forceStopButton = topButton("FORCE STOP", Color.rgb(78, 0, 100))
+        backgroundButton.setOnClickListener {
+            LogBus.log("App in Background verschoben, Bridge bleibt aktiv")
+            moveTaskToBack(true)
+        }
+        returnAppButton.setOnClickListener {
+            val pkg = selectedReturnAppPackage.ifBlank { ConfigStore.load(this).returnAppPackage }
+            val launch = if (pkg.isNotBlank()) packageManager.getLaunchIntentForPackage(pkg) else null
+            if (launch != null) {
+                LogBus.log("Return App gestartet: $pkg")
+                startActivity(launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            } else {
+                LogBus.log("Return App nicht konfiguriert oder nicht startbar, gehe in Background")
+                moveTaskToBack(true)
             }
-        })
-        root.addView(headerRow)
+        }
+        forceStopButton.setOnClickListener {
+            startService(Intent(this@MainActivity, CasambiBridgeService::class.java).apply { action = CasambiBridgeService.ACTION_STOP })
+            finishAndRemoveTask()
+            ui.postDelayed({ Process.killProcess(Process.myPid()) }, 250)
+        }
+        topButtonRow.addView(backgroundButton)
+        topButtonRow.addView(returnAppButton)
+        topButtonRow.addView(forceStopButton)
+        headerBlock.addView(topButtonRow)
+        root.addView(headerBlock)
         root.addView(TextView(this).apply {
             text = "powered by Sambesi"
             textSize = 9f
             setTextColor(lime)
             setTypeface(Typeface.MONOSPACE, Typeface.BOLD)
-            setPadding(0, 0, 0, 2)
+            setPadding(0, 7, 0, 2)
         })
         root.addView(TextView(this).apply {
             text = "NEON CANOPY CONTROL CENTER"
@@ -143,7 +182,6 @@ class MainActivity : AppCompatActivity() {
             setTypeface(Typeface.MONOSPACE, Typeface.BOLD)
             setPadding(0, 0, 0, 12)
         })
-
         val tabBar = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             setPadding(0, 0, 0, 10)
@@ -307,18 +345,23 @@ class MainActivity : AppCompatActivity() {
         statusCard.addView(sigGrid1)
         val sigRowOne = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         val sigRowTwo = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        val sigRowThree = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         sigGrid1.addView(sigRowOne)
         sigGrid1.addView(sigRowTwo)
+        sigGrid1.addView(sigRowThree)
+        bleConnectedLed = signalRow(sigRowOne, "BLE")
         bleRxLed = signalRow(sigRowOne, "BLE RX")
         bleTxLed = signalRow(sigRowOne, "BLE TX")
-        mqttStatusLed = signalRow(sigRowOne, "MQTT")
         directLed = signalRow(sigRowOne, "Direct")
-        mdnsLed = signalRow(sigRowOne, "mDNS")
-        mqttInLed = signalRow(sigRowTwo, "MQTT IN")
-        mqttOutLed = signalRow(sigRowTwo, "MQTT OUT")
+        directRxLed = signalRow(sigRowTwo, "DIR RX")
+        directTxLed = signalRow(sigRowTwo, "DIR TX")
+        mdnsLed = signalRow(sigRowTwo, "mDNS")
         smbLed = signalRow(sigRowTwo, "SMB")
-        webLed = signalRow(sigRowTwo, "Web")
-        tcpLed = signalRow(sigRowTwo, "TCP")
+        webLed = signalRow(sigRowThree, "Web")
+        tcpLed = signalRow(sigRowThree, "TCP")
+        mqttStatusLed = signalRow(sigRowThree, "MQTT")
+        mqttInLed = signalRow(sigRowThree, "MQTT IN")
+        mqttOutLed = signalRow(sigRowThree, "MQTT OUT")
         statusText = TextView(this).apply {
             text = "Live-Log in der App entfernt. Diagnose laeuft primaer ueber SMB."
             textSize = 11f
@@ -456,6 +499,36 @@ class MainActivity : AppCompatActivity() {
         val smbPassword = field(configCard, "SMB Passwort", c.smbPassword, true)
         val tcpPort = field(configCard, "TCP Logstream Port", c.tcpLogPort.toString())
         val webPort = field(configCard, "Webinterface Port", c.webInterfacePort.toString())
+        currentPage = settingsPage
+        val returnAppCard = card("Return App")
+        data class LaunchableApp(val label: String, val packageName: String)
+        val launchIntent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
+        val launchableApps = packageManager.queryIntentActivities(launchIntent, 0)
+            .map { LaunchableApp(it.loadLabel(packageManager).toString(), it.activityInfo.packageName) }
+            .distinctBy { it.packageName }
+            .sortedBy { it.label.lowercase() }
+        val appChoices = listOf(LaunchableApp("Launcher / keine Ziel-App", "")) + launchableApps
+        returnAppCard.addView(TextView(this).apply {
+            text = "Ziel-App fuer RETURN APP aus installierten Launcher-Apps auswaehlen. BACKGROUND nutzt immer den Android Launcher und laesst die Bridge weiterlaufen."
+            textSize = 10f
+            setTextColor(textMuted)
+            setTypeface(Typeface.MONOSPACE, Typeface.NORMAL)
+            setPadding(0, 6, 0, 8)
+        })
+        val returnAppSpinner = Spinner(this).apply {
+            adapter = ArrayAdapter(this@MainActivity, android.R.layout.simple_spinner_dropdown_item, appChoices.map { it.label })
+        }
+        returnAppCard.addView(returnAppSpinner)
+        val initialReturnIndex = appChoices.indexOfFirst { it.packageName == c.returnAppPackage }.takeIf { it >= 0 } ?: 0
+        returnAppSpinner.setSelection(initialReturnIndex)
+        selectedReturnAppPackage = appChoices[initialReturnIndex].packageName
+        returnAppSpinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
+                selectedReturnAppPackage = appChoices.getOrNull(position)?.packageName ?: ""
+                markSettingsDirty()
+            }
+            override fun onNothingSelected(parent: AdapterView<*>?) {}
+        }
         val saveSettings = button("EINSTELLUNGEN SPEICHERN").apply { visibility = View.GONE }
         configCard.addView(saveSettings)
 
@@ -557,24 +630,34 @@ class MainActivity : AppCompatActivity() {
             webSocketLiveEnabled = webSocketSwitch.isChecked,
             mqttEnabled = mqttModeSwitch.isChecked,
             directModeEnabled = directModeSwitch.isChecked,
-            networkDiscoveryEnabled = networkDiscoverySwitch.isChecked
+            networkDiscoveryEnabled = networkDiscoverySwitch.isChecked,
+            returnAppPackage = selectedReturnAppPackage
         )
 
         fun setSwitchLeds() {
-            if (mqttHost.text.toString().isBlank()) setLed(mqttStatusLed, false)
-            setLed(smbLed, smbSwitch.isChecked)
-            setLed(webLed, webSwitch.isChecked)
-            setLed(tcpLed, tcpSwitch.isChecked)
-            setLed(smbSwitchLed, smbSwitch.isChecked)
-            setLed(webSwitchLed, webSwitch.isChecked)
-            setLed(tcpSwitchLed, tcpSwitch.isChecked)
-            setLed(autoApiSwitchLed, autoApiSwitch.isChecked)
-            setLed(webSocketSwitchLed, webSocketSwitch.isChecked)
-            setLed(mqttModeSwitchLed, mqttModeSwitch.isChecked)
-            setLed(directModeSwitchLed, directModeSwitch.isChecked)
-            setLed(networkDiscoverySwitchLed, networkDiscoverySwitch.isChecked)
-            setLed(directLed, directModeSwitch.isChecked)
-            setLed(mdnsLed, networkDiscoverySwitch.isChecked && directModeSwitch.isChecked)
+            val mqttVisible = mqttModeSwitch.isChecked && mqttHost.text.toString().isNotBlank()
+            mqttMonitorVisible = mqttVisible
+            listOf(mqttStatusLed, mqttInLed, mqttOutLed).forEach { led ->
+                (led.parent as? View)?.visibility = if (mqttVisible) View.VISIBLE else View.GONE
+            }
+            setLed(mqttStatusLed, mqttVisible, amber)
+            if (!mqttVisible) { setLed(mqttInLed, false, violet); setLed(mqttOutLed, false, violet) }
+            setLed(smbLed, smbSwitch.isChecked, amber)
+            setLed(webLed, webSwitch.isChecked, cyan)
+            setLed(tcpLed, tcpSwitch.isChecked, violet)
+            setLed(smbSwitchLed, smbSwitch.isChecked, amber)
+            setLed(webSwitchLed, webSwitch.isChecked, cyan)
+            setLed(tcpSwitchLed, tcpSwitch.isChecked, violet)
+            setLed(autoApiSwitchLed, autoApiSwitch.isChecked, lime)
+            setLed(webSocketSwitchLed, webSocketSwitch.isChecked, ps2Blue)
+            setLed(mqttModeSwitchLed, mqttModeSwitch.isChecked, amber)
+            setLed(directModeSwitchLed, directModeSwitch.isChecked, cyan)
+            setLed(networkDiscoverySwitchLed, networkDiscoverySwitch.isChecked, lime)
+            setLed(directLed, directModeSwitch.isChecked, cyan)
+            setLed(mdnsLed, networkDiscoverySwitch.isChecked && directModeSwitch.isChecked, lime)
+            setLed(bleConnectedLed, RuntimeStatus.bleConnected, ps2Blue)
+            setLed(directRxLed, false, ps2Purple)
+            setLed(directTxLed, false, lime)
         }
         setSwitchLeds()
         var suppressDirty = false
@@ -735,6 +818,9 @@ class MainActivity : AppCompatActivity() {
             smbServer.setText(x.smbServer); smbShare.setText(x.smbShare); smbPath.setText(x.smbPath); smbDomain.setText(x.smbDomain); smbUser.setText(x.smbUser); smbPassword.setText(x.smbPassword)
             tcpPort.setText(x.tcpLogPort.toString()); webPort.setText(x.webInterfacePort.toString())
             smbSwitch.isChecked = x.smbDebugEnabled; webSwitch.isChecked = x.webInterfaceEnabled; tcpSwitch.isChecked = x.tcpLogEnabled; autoApiSwitch.isChecked = x.autoApiFetchEnabled; webSocketSwitch.isChecked = x.webSocketLiveEnabled; mqttModeSwitch.isChecked = x.mqttEnabled; directModeSwitch.isChecked = x.directModeEnabled; networkDiscoverySwitch.isChecked = x.networkDiscoveryEnabled
+            selectedReturnAppPackage = x.returnAppPackage
+            val returnIndex = appChoices.indexOfFirst { it.packageName == x.returnAppPackage }.takeIf { it >= 0 } ?: 0
+            returnAppSpinner.setSelection(returnIndex)
             setSwitchLeds()
             refreshSetupStatus()
             saveSettings.visibility = View.GONE
@@ -913,8 +999,8 @@ class MainActivity : AppCompatActivity() {
         lampLedRef?.let { setLed(it, RuntimeStatus.lastOnline) }
     }
 
-    private fun setLed(led: TextView, on: Boolean) {
-        led.setTextColor(if (on) ps2Green else darkLed)
+    private fun setLed(led: TextView, on: Boolean, color: Int = ps2Green) {
+        led.setTextColor(if (on) color else darkLed)
     }
 
     private fun flash(led: TextView) {

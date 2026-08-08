@@ -103,16 +103,21 @@ object WebControlServer {
             val id = route.removePrefix("/api/light/").trim('/').toIntOrNull() ?: 1
             val state = params["state"] ?: params["power"] ?: "ON"
             val brightness = params["brightness"]?.toIntOrNull()
+            LogBus.log("Direct API RX light unit=$id state=$state brightness=${brightness ?: -1}")
             sendCommandToUnit(id, state, brightness)
+            LogBus.log("Direct API TX light command unit=$id state=$state")
             return "application/json; charset=utf-8" to JSONObject().put("ok", true).put("unit_id", id).put("state", state).put("brightness", brightness ?: JSONObject.NULL).toString()
         }
         if (route.startsWith("/api/scene/")) {
             val id = route.removePrefix("/api/scene/").trim('/').toIntOrNull() ?: -1
             val scene = appContext?.let { ctx -> SceneStore.loadScenes(ctx).firstOrNull { it.id == id } }
+            LogBus.log("Direct API RX scene id=$id")
             if (id >= 0) sendScene(id, scene?.name ?: "Scene $id")
+            if (id >= 0) LogBus.log("Direct API TX scene command id=$id")
             return "application/json; charset=utf-8" to JSONObject().put("ok", id >= 0).put("scene_id", id).put("scene_name", scene?.name ?: "Scene $id").toString()
         }
         if (route == "/api/mode") {
+            LogBus.log("Direct API RX mode ${params}")
             val ctx = appContext ?: return "application/json; charset=utf-8" to JSONObject().put("ok", false).put("error", "no context").toString()
             val current = ConfigStore.load(ctx)
             fun optBool(name: String, old: Boolean): Boolean = params[name]?.let { it.equals("ON", true) || it.equals("true", true) || it == "1" } ?: old
@@ -126,11 +131,14 @@ object WebControlServer {
             TcpLogServer.configure(updated)
             WebControlServer.configure(ctx, updated)
             ctx.startService(Intent(ctx, CasambiBridgeService::class.java).apply { action = CasambiBridgeService.ACTION_START })
+            LogBus.log("Direct API TX mode mqtt=${updated.mqttEnabled} direct=${updated.directModeEnabled} discovery=${updated.networkDiscoveryEnabled}")
             return "application/json; charset=utf-8" to JSONObject().put("ok", true).put("mqtt", updated.mqttEnabled).put("direct", updated.directModeEnabled).put("discovery", updated.networkDiscoveryEnabled).toString()
         }
         if (route == "/api/restart") {
+            LogBus.log("Direct API RX restart")
             val ctx = appContext ?: return "application/json; charset=utf-8" to JSONObject().put("ok", false).put("error", "no context").toString()
             ctx.startService(Intent(ctx, CasambiBridgeService::class.java).apply { action = CasambiBridgeService.ACTION_START })
+            LogBus.log("Direct API TX restart")
             return "application/json; charset=utf-8" to JSONObject().put("ok", true).put("action", "restart").toString()
         }
         return when (route) {
@@ -203,7 +211,7 @@ object WebControlServer {
         val webUrl = localWebUrl(c)
         return JSONObject()
             .put("name", c.casambiNetworkName.ifBlank { "Casambi Jungle Bridge" })
-            .put("version", "0.7.1")
+            .put("version", "0.7.3")
             .put("mode", if (c.mqttEnabled && c.directModeEnabled) "hybrid" else if (c.directModeEnabled) "direct" else "mqtt")
             .put("mqtt_enabled", c.mqttEnabled && c.mqttHost.isNotBlank())
             .put("direct_enabled", c.directModeEnabled)
@@ -263,7 +271,7 @@ object WebControlServer {
         .put("brightnessPct", ((RuntimeStatus.lastBrightness.coerceIn(0,255) * 100) / 255))
         .put("lastSyncText", if (RuntimeStatus.lastSyncMillis > 0L) ageText(RuntimeStatus.lastSyncMillis) else "not synced")
         .put("lastUpdateText", if (RuntimeStatus.lastUpdateMillis > 0L) ageText(RuntimeStatus.lastUpdateMillis) else "never")
-        .put("version", "0.7.1")
+        .put("version", "0.7.3")
         .put("direct", appContext?.let { ConfigStore.load(it).directModeEnabled } ?: false)
         .put("mdns", appContext?.let { ConfigStore.load(it).networkDiscoveryEnabled } ?: false)
         .toString()
@@ -369,7 +377,7 @@ object WebControlServer {
         return page("Casambi Jungle", """
 <div class='hero'>
   <h1>CASAMBI JUNGLE</h1>
-  <div class='sub'>${esc(c.casambiNetworkName.ifBlank { "Bridge Control Center" })} - powered by Sambesi - v0.7.1</div>
+  <div class='sub'>${esc(c.casambiNetworkName.ifBlank { "Bridge Control Center" })} - powered by Sambesi - v0.7.3</div>
   <div class='msg'>${esc(message)}</div>
 </div>
 <div class='grid'>

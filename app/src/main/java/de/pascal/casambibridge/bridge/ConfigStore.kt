@@ -35,7 +35,8 @@ object ConfigStore {
             p.getBoolean("webSocketLiveEnabled", false),
             p.getBoolean("mqttEnabled", true),
             p.getBoolean("directModeEnabled", true),
-            p.getBoolean("networkDiscoveryEnabled", true)
+            p.getBoolean("networkDiscoveryEnabled", true),
+            p.getString("returnAppPackage", "") ?: ""
         )
     }
 
@@ -69,6 +70,7 @@ object ConfigStore {
             .putBoolean("mqttEnabled", c.mqttEnabled)
             .putBoolean("directModeEnabled", c.directModeEnabled)
             .putBoolean("networkDiscoveryEnabled", c.networkDiscoveryEnabled)
+            .putString("returnAppPackage", c.returnAppPackage)
             .apply()
     }
 }
