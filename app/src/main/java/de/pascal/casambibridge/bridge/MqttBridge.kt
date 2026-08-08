@@ -117,7 +117,7 @@ class MqttBridge(
 
     fun publishTest() = publish(
         topic("test"),
-        JSONObject().put("bridge", "casambi").put("version", "0.3.0").toString(),
+        JSONObject().put("bridge", "casambi").put("version", "0.3.1").toString(),
         false
     )
 
@@ -231,7 +231,7 @@ class MqttBridge(
         .put("identifiers", "casambi_bridge_android")
         .put("name", "Android Casambi Bridge")
         .put("manufacturer", "Pascal/Copilot")
-        .put("model", "v0.3.0")
+        .put("model", "v0.3.1")
 
     private fun publish(topicName: String, payload: String, retained: Boolean) {
         val mqttClient = client ?: return

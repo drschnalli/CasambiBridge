@@ -98,7 +98,7 @@ class MainActivity : AppCompatActivity() {
 
         val headerRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         headerRow.addView(TextView(this).apply {
-            text = "CASAMBI BRIDGE // v0.3.0"
+            text = "CASAMBI BRIDGE // v0.3.1"
             textSize = 21f
             setTextColor(leaf)
             setTypeface(Typeface.MONOSPACE, Typeface.BOLD)
@@ -207,10 +207,14 @@ class MainActivity : AppCompatActivity() {
 
         fun button(text: String) = Button(this).apply {
             this.text = text
-            textSize = 10f
+            textSize = 9f
             setTypeface(Typeface.MONOSPACE, Typeface.BOLD)
             setTextColor(Color.rgb(0, 18, 8))
             setBackgroundColor(leaf)
+            isAllCaps = false
+            minHeight = 0
+            minimumHeight = 0
+            setPadding(4, 8, 4, 8)
         }
 
         fun led(): TextView = TextView(this).apply {
@@ -402,21 +406,32 @@ class MainActivity : AppCompatActivity() {
 
         currentPage = controlPage
         val actionCard = card("Actions")
-        val row1 = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        val start = button("START")
-        val stop = button("STOP")
-        val mqttTest = button("MQTT")
-        row1.addView(start); row1.addView(stop); row1.addView(mqttTest)
-        actionCard.addView(row1)
-        val row2 = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        val save = button("SAVE")
-        val ble = button("BLE")
-        val backup = button("BACKUP SMB")
-        val restore = button("RESTORE SMB")
-        val fetchApi = button("FETCH API")
-        val scanBt = button("SCAN CASAMBI")
-        row2.addView(save); row2.addView(ble); row2.addView(backup); row2.addView(restore); row2.addView(fetchApi); row2.addView(scanBt)
-        actionCard.addView(row2)
+        fun actionGridButton(label: String): Button = button(label).apply {
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
+                setMargins(4, 4, 4, 4)
+            }
+        }
+        fun actionRow(left: Button, right: Button) {
+            val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+            row.addView(left)
+            row.addView(right)
+            actionCard.addView(row)
+        }
+        val start = actionGridButton("START")
+        val stop = actionGridButton("STOP")
+        val mqttTest = actionGridButton("MQTT")
+        val save = actionGridButton("SAVE")
+        val ble = actionGridButton("BLE")
+        val fetchApi = actionGridButton("FETCH API")
+        val scanBt = actionGridButton("SCAN CASAMBI")
+        val backup = actionGridButton("BACKUP SMB")
+        val restore = actionGridButton("RESTORE SMB")
+        val spacer = actionGridButton(" ").apply { isEnabled = false; setBackgroundColor(panel) }
+        actionRow(start, stop)
+        actionRow(fetchApi, scanBt)
+        actionRow(save, mqttTest)
+        actionRow(ble, backup)
+        actionRow(restore, spacer)
 
         setContentView(scroll)
 

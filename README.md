@@ -1,22 +1,30 @@
-# Casambi Bridge v0.3.0
+# Casambi Bridge v0.3.1
 
-v0.3.0 ist der erste UI-Release auf Basis des stabilen v0.2.42/v0.2.45 Funktionsstands.
+v0.3.1 ist ein UI-Fix auf Basis von v0.3.0.
 
-## Wichtigste Änderung
+## Fix in v0.3.1
 
-Die App ist jetzt in Reiter aufgeteilt:
+Der `CTRL`-Reiter hatte noch horizontale Button-Reihen. Auf kleinen Displays wurden dadurch `FETCH API` und besonders `SCAN CASAMBI` abgeschnitten oder gar nicht sichtbar.
+
+In v0.3.1 ist der `CTRL`-Reiter jetzt als 2-Spalten-Grid aufgebaut:
+
+```text
+START          STOP
+FETCH API      SCAN CASAMBI
+SAVE           MQTT
+BLE            BACKUP SMB
+RESTORE SMB
+```
+
+Dadurch bleiben alle Aktionen sichtbar und nichts läuft rechts aus dem Bildschirm.
+
+## Reiter
 
 ```text
 HOME   CTRL   SET   ADV   LOG
 ```
 
-Damit ist die Hauptansicht auf kleinen Displays deutlich schlanker.
-
-## Reiter
-
 ### HOME
-
-Für den Alltag:
 
 - Signal/Status LEDs
 - Unit 1 Steuerung
@@ -25,21 +33,17 @@ Für den Alltag:
 
 ### CTRL
 
-Aktionen:
-
 - START
 - STOP
-- MQTT Test
-- SAVE
-- BLE Test
-- BACKUP SMB
-- RESTORE SMB
 - FETCH API
 - SCAN CASAMBI
+- SAVE
+- MQTT
+- BLE
+- BACKUP SMB
+- RESTORE SMB
 
 ### SET
-
-Normale Einstellungen:
 
 - Casambi MAC
 - Casambi Netzwerkname
@@ -53,17 +57,13 @@ Normale Einstellungen:
 
 ### ADV
 
-Advanced/Fallback:
-
 - Protocol Version
 - Key ID
 - HEX Key
 
-Diese Felder sind nur Fallback. Normalerweise holt die App den Key per API Fetch.
-
 ### LOG
 
-Kurzer Hinweis zum Log-Status. Die ausführlichen Logs laufen weiterhin über SMB/TCP.
+- Hinweis auf SMB/TCP-Diagnose
 
 ## Weiterhin enthalten
 
@@ -81,21 +81,6 @@ Kurzer Hinweis zum Log-Status. Die ausführlichen Logs laufen weiterhin über SM
 - Unit 1 Connected/Online LED
 - PS2-Style LED-Flicker
 - Force Stop Button
-
-## Home Assistant Entities
-
-Diese Entities sollten weiterhin bzw. zusätzlich erscheinen:
-
-```text
-Casambi Light 1
-Casambi Scene An
-Casambi Scene Aus
-Casambi Bridge Status
-Casambi BLE Status
-Casambi Unit 1 Online
-Casambi API Fetch
-Casambi Restart Bridge
-```
 
 ## Build
 
