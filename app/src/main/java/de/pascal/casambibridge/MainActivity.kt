@@ -17,6 +17,7 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.os.Process
+import android.provider.Settings
 import android.text.Editable
 import android.text.InputType
 import android.text.TextWatcher
@@ -141,7 +142,7 @@ class MainActivity : AppCompatActivity() {
 
         val headerBlock = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         headerBlock.addView(TextView(this).apply {
-            text = "🌴 CASAMBI JUNGLE\n// v0.7.8"
+            text = "🌴 CASAMBI JUNGLE\n// v0.7.9"
             textSize = 20f
             setTextColor(leaf)
             setTypeface(Typeface.MONOSPACE, Typeface.BOLD)
@@ -371,12 +372,12 @@ class MainActivity : AppCompatActivity() {
         sigGrid1.addView(sigRowDirect)
         sigGrid1.addView(sigRowSystem)
         sigGrid1.addView(sigRowMqtt)
-        bleConnectedLed = signalRow(sigRowBle, "BLE")
+        bleConnectedLed = signalRow(sigRowBle, "ᛒ BLE")
         bleRxLed = signalRow(sigRowBle, "BLE RX")
         bleTxLed = signalRow(sigRowBle, "BLE TX")
-        directLed = signalRow(sigRowDirect, "Direct")
-        directRxLed = signalRow(sigRowDirect, "D RX")
-        directTxLed = signalRow(sigRowDirect, "D TX")
+        directLed = signalRow(sigRowDirect, "⇄ API")
+        directRxLed = signalRow(sigRowDirect, "← RX")
+        directTxLed = signalRow(sigRowDirect, "→ TX")
         mdnsLed = signalRow(sigRowSystem, "mDNS")
         webLed = signalRow(sigRowSystem, "Web")
         smbLed = signalRow(sigRowSystem, "💾 SMB")
@@ -576,8 +577,10 @@ class MainActivity : AppCompatActivity() {
             setPadding(0, 8, 0, 8)
         }
         val requestScanPermissionsButton = button("REQUEST SCANNER PERMISSIONS")
+        val openLocationSettingsButton = button("OPEN LOCATION SETTINGS")
         permissionsCard.addView(permissionStatusText)
         permissionsCard.addView(requestScanPermissionsButton)
+        permissionsCard.addView(openLocationSettingsButton)
         fun scannerPermissionStatus(): String {
             val fine = ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
             val btScan = android.os.Build.VERSION.SDK_INT < 31 || ContextCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_SCAN) == PackageManager.PERMISSION_GRANTED
@@ -587,7 +590,21 @@ class MainActivity : AppCompatActivity() {
         }
         fun refreshPermissionStatus() { permissionStatusText.text = scannerPermissionStatus() }
         refreshPermissionStatus()
-        requestScanPermissionsButton.setOnClickListener { requestPermissionsIfNeeded(); ui.postDelayed({ refreshPermissionStatus() }, 600) }
+        requestScanPermissionsButton.setOnClickListener {
+            val before = scannerPermissionStatus()
+            requestPermissionsIfNeeded()
+            ui.postDelayed({
+                refreshPermissionStatus()
+                val after = scannerPermissionStatus()
+                statusText.text = if (before == after && after.contains("true")) "Scanner Permissions: bereits erteilt" else "Scanner Permissions aktualisiert"
+                LogBus.log("Scanner Permissions geprüft: $after")
+            }, 600)
+        }
+        openLocationSettingsButton.setOnClickListener {
+            runCatching { startActivity(Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS)) }
+            statusText.text = "Android Standortdienste öffnen"
+            LogBus.log("Scanner Permissions: Standortdienste Einstellungen geöffnet")
+        }
 
         fun switchRow(parent: LinearLayout, text: String, checked: Boolean): Pair<Switch, TextView> {
             val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
@@ -662,7 +679,7 @@ class MainActivity : AppCompatActivity() {
         })
         val netRange = field(scanToolsCard, "Network Range CIDR leer = aktuelles /24", "")
         val netFilter = field(scanToolsCard, "Network Filter Name/IP/Port", "")
-        val netPortMode = field(scanToolsCard, "Port Mode known/all/custom", "known")
+        val netPortMode = field(scanToolsCard, "Port Mode none/known/all/custom", "known")
         val netCustomPorts = field(scanToolsCard, "Custom Ports komma-separiert", "22,80,443,445,1883,5555,8080,8123")
         val netBtnRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         val scanIpButton = actionGridButton("SCAN IP")
@@ -803,11 +820,19 @@ class MainActivity : AppCompatActivity() {
             }.getOrNull() ?: "192.168.1.1"
             return ip.substringBeforeLast('.', "192.168.1") + ".0/24"
         }
+        fun arpMacFor(ip: String): String {
+            return runCatching {
+                java.io.File("/proc/net/arp").readLines().drop(1).firstOrNull { line ->
+                    line.trim().split(Regex("\s+")).firstOrNull() == ip
+                }?.trim()?.split(Regex("\s+"))?.getOrNull(3) ?: "-"
+            }.getOrDefault("-")
+        }
         fun portListForScan(): List<Int> {
             val mode = netPortMode.text.toString().trim().lowercase()
             val custom = netCustomPorts.text.toString().split(',', ';', ' ').mapNotNull { it.trim().toIntOrNull() }.filter { it in 1..65535 }.distinct()
             val known = listOf(22, 53, 80, 443, 445, 1883, 5555, 8080, 8123)
             return when (mode) {
+                "none", "noports", "off", "ping" -> emptyList()
                 "all" -> (1..65535).toList()
                 "custom" -> custom.ifEmpty { known }
                 else -> custom.ifEmpty { known }
@@ -838,8 +863,8 @@ class MainActivity : AppCompatActivity() {
             val input = netRange.text.toString().trim().ifBlank { currentSubnet24() }
             val filter = netFilter.text.toString().trim().lowercase()
             val ports = portListForScan()
-            networkResultText.text = "IP Scan laeuft: $input  Ports=${ports.size}"
-            LogBus.log("Network Scanner: IP Scan gestartet range=$input ports=${ports.size}")
+            networkResultText.text = "IP Scan laeuft: $input  Ports=${if (ports.isEmpty()) "none" else ports.size.toString()}"
+            LogBus.log("Network Scanner: IP Scan gestartet range=$input ports=${if (ports.isEmpty()) "none" else ports.size.toString()}")
             Thread {
                 val base = input.substringBefore('/').substringBeforeLast('.', "192.168.1")
                 val rows = mutableListOf<String>()
@@ -848,19 +873,21 @@ class MainActivity : AppCompatActivity() {
                     val ip = "$base.$i"
                     try {
                         val addr = InetAddress.getByName(ip)
-                        val open = ports.filter { simplePortOpen(ip, it) }
-                        val reachable = open.isNotEmpty() || runCatching { addr.isReachable(180) }.getOrDefault(false)
+                        val open = if (ports.isEmpty()) emptyList() else ports.filter { simplePortOpen(ip, it) }
+                        val reachable = if (ports.isEmpty()) runCatching { addr.isReachable(220) }.getOrDefault(false) else open.isNotEmpty() || runCatching { addr.isReachable(180) }.getOrDefault(false)
                         if (reachable) {
                             val name = runCatching { addr.canonicalHostName }.getOrDefault("")
-                            val line = "$ip  name=${if (name == ip) "-" else name}  ports=${if (open.isEmpty()) "-" else open.joinToString(",")}"
+                            val macAddr = arpMacFor(ip)
+                            val portText = if (ports.isEmpty()) "not scanned" else if (open.isEmpty()) "-" else open.joinToString(",")
+                            val line = "$ip  name=${if (name == ip) "-" else name}  mac=$macAddr  ports=$portText"
                             if (filter.isBlank() || line.lowercase().contains(filter)) rows += line
                         }
                         if (i % 10 == 0 || rows.size % 5 == 0) {
-                            runOnUiThread { networkResultText.text = "IP Scan $i/254  Treffer=${rows.size}  Ports=${ports.size}\n" + rows.sorted().joinToString("\n").ifBlank { "Suche..." } }
+                            runOnUiThread { networkResultText.text = "IP Scan $i/254  Treffer=${rows.size}  Ports=${if (ports.isEmpty()) "none" else ports.size.toString()}\n" + rows.sorted().joinToString("\n").ifBlank { "Suche..." } }
                         }
                     } catch (_: Throwable) {}
                 }
-                val result = "Network IP Scan $input  ports=${ports.take(40).joinToString(",")}${if (ports.size > 40) ",..." else ""}\n" + (rows.sorted().joinToString("\n").ifBlank { if (stopIpScan) "Scan gestoppt" else "Keine Treffer" })
+                val result = "Network IP Scan $input  ports=${if (ports.isEmpty()) "none" else ports.take(40).joinToString(",")}${if (ports.size > 40) ",..." else ""}\n" + (rows.sorted().joinToString("\n").ifBlank { if (stopIpScan) "Scan gestoppt" else "Keine Treffer" })
                 lastNetworkScanText = result
                 runOnUiThread { networkResultText.text = result; LogBus.log("Network Scanner: IP Scan fertig Treffer=${rows.size}") }
             }.start()
@@ -959,7 +986,7 @@ class MainActivity : AppCompatActivity() {
                 }.filter { filter.isBlank() || it.lowercase().contains(filter) }.sortedByDescending { it.substringAfter("rssi=").substringBefore(" ").trim().toIntOrNull() ?: -999 }
                 val grouped = rows.groupBy { it.substringAfter("ssid=").substringBefore("  bssid=") }
                     .flatMap { (ssid, items) -> listOf("SSID: $ssid (${items.size})") + items.map { "  $it" } }
-                lastWifiScanText = "WiFi Scan  Treffer=${rows.size}\n" + grouped.joinToString("\n").ifBlank { "Keine Treffer oder Berechtigung fehlt\n" + scannerPermissionStatus() }
+                lastWifiScanText = "WiFi Scan  Treffer=${rows.size}\n" + grouped.joinToString("\n").ifBlank { "Keine Treffer. Wenn alle Rechte true sind: Android Standortdienste/WLAN-Scan aktivieren oder WiFi Einstellungen einmal öffnen.\n" + scannerPermissionStatus() }
                 rememberSession(wifiSessions, lastWifiScanText)
                 wifiResultText.text = lastWifiScanText
                 LogBus.log("WiFi Scanner: Scan fertig Treffer=${rows.size}")
@@ -1011,7 +1038,7 @@ class MainActivity : AppCompatActivity() {
                 override fun afterTextChanged(editable: Editable?) {}
             })
         }
-        listOf(mac, network, casambiPass, protocol, keyId, keyHex, mqttHost, mqttPort, mqttUser, mqttPass, baseTopic, discoveryPrefix, smbServer, smbShare, smbPath, smbDomain, smbUser, smbPassword, tcpPort, webPort).forEach { watchField(it) }
+        listOf(mac, network, casambiPass, protocol, keyId, keyHex, mqttHost, mqttPort, mqttUser, mqttPass, baseTopic, discoveryPrefix, smbServer, smbShare, smbPath, smbDomain, smbUser, smbPassword, tcpPort, webPort, netPortMode, netCustomPorts).forEach { watchField(it) }
         smbSwitch.setOnCheckedChangeListener { _, _ -> setSwitchLeds(); markSettingsDirty() }
         webSwitch.setOnCheckedChangeListener { _, _ -> setSwitchLeds(); markSettingsDirty() }
         tcpSwitch.setOnCheckedChangeListener { _, _ -> setSwitchLeds(); markSettingsDirty() }
