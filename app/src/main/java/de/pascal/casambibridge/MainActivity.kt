@@ -107,7 +107,7 @@ class MainActivity : AppCompatActivity() {
 
         val headerRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         headerRow.addView(TextView(this).apply {
-            text = "CASAMBI JUNGLE // v0.3.9"
+            text = "🌴 CASAMBI JUNGLE // v0.4.0"
             textSize = 21f
             setTextColor(leaf)
             setTypeface(Typeface.MONOSPACE, Typeface.BOLD)
@@ -118,7 +118,7 @@ class MainActivity : AppCompatActivity() {
             textSize = 9f
             setTextColor(Color.WHITE)
             setTypeface(Typeface.MONOSPACE, Typeface.BOLD)
-            setBackgroundColor(Color.rgb(60, 0, 90))
+            setBackgroundColor(Color.rgb(78, 0, 100))
             setOnClickListener {
                 startService(Intent(this@MainActivity, CasambiBridgeService::class.java).apply { action = CasambiBridgeService.ACTION_STOP })
                 finishAndRemoveTask()
@@ -126,6 +126,13 @@ class MainActivity : AppCompatActivity() {
             }
         })
         root.addView(headerRow)
+        root.addView(TextView(this).apply {
+            text = "powered by Sambesi"
+            textSize = 9f
+            setTextColor(lime)
+            setTypeface(Typeface.MONOSPACE, Typeface.BOLD)
+            setPadding(0, 0, 0, 2)
+        })
         root.addView(TextView(this).apply {
             text = "NEON CANOPY CONTROL CENTER"
             textSize = 12f
@@ -137,6 +144,7 @@ class MainActivity : AppCompatActivity() {
         val tabBar = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             setPadding(0, 0, 0, 10)
+            setBackgroundColor(Color.rgb(2, 12, 8))
         }
         root.addView(tabBar)
 
@@ -154,14 +162,19 @@ class MainActivity : AppCompatActivity() {
         var currentPage: LinearLayout = homePage
         val tabButtons = linkedMapOf<LinearLayout, Button>()
         fun styleTab(button: Button, active: Boolean) {
+            val base = button.tag?.toString() ?: button.text.toString()
             if (active) {
+                button.text = "🌴 $base"
                 button.setBackgroundColor(cyan)
                 button.setTextColor(Color.rgb(0, 18, 8))
-                button.textSize = 8.5f
+                button.textSize = 7.8f
+                button.setTypeface(Typeface.MONOSPACE, Typeface.BOLD)
             } else {
+                button.text = "🌿 $base"
                 button.setBackgroundColor(leaf)
                 button.setTextColor(Color.rgb(0, 18, 8))
-                button.textSize = 8f
+                button.textSize = 7.3f
+                button.setTypeface(Typeface.MONOSPACE, Typeface.BOLD)
             }
         }
 
@@ -171,12 +184,13 @@ class MainActivity : AppCompatActivity() {
         }
 
         fun tab(text: String, target: LinearLayout): Button = Button(this).apply {
+            this.tag = text
             this.text = text
             textSize = 8f
             setTypeface(Typeface.MONOSPACE, Typeface.BOLD)
             setTextColor(Color.rgb(0, 18, 8))
             setBackgroundColor(leaf)
-            setPadding(2, 2, 2, 2)
+            setPadding(1, 4, 1, 4)
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
                 setMargins(2, 0, 2, 0)
             }
@@ -273,12 +287,12 @@ class MainActivity : AppCompatActivity() {
         }
 
         currentPage = homePage
-        val jungleCard = card("Casambi Jungle")
+        val jungleCard = card("🌴 Casambi Jungle")
         jungleCard.addView(TextView(this).apply {
             val sceneCount = SceneStore.loadScenes(this@MainActivity).size
             val networkName = c.casambiNetworkName.ifBlank { "nicht gesetzt" }
-            val mqttText = if (c.mqttHost.isNotBlank()) "MQTT ${c.mqttHost}:${c.mqttPort}" else "MQTT nicht eingerichtet"
-            text = "Network: $networkName\nUnits: 1  |  Scenes: $sceneCount\n$mqttText"
+            val mqttText = if (c.mqttHost.isNotBlank()) "📡 MQTT ${c.mqttHost}:${c.mqttPort}" else "📡 MQTT nicht eingerichtet"
+            text = "🌴 $networkName\n💡 Units: 1  |  🎭 Scenes: $sceneCount\n$mqttText"
             textSize = 12f
             setTextColor(textMain)
             setTypeface(Typeface.MONOSPACE, Typeface.BOLD)

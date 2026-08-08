@@ -1,63 +1,51 @@
-# Casambi Bridge v0.3.9
+# Casambi Bridge v0.4.0
 
-v0.3.9 ist ein HOME/Jungle-Polish auf Basis von v0.3.7.
+v0.4.0 ist die erste **Casambi Jungle Identity** Version.
 
-## Neu in v0.3.9
+## Neu in v0.4.0
 
-### Casambi Jungle ist zurück
+### Header mit Jungle-Charakter
 
-Der Header zeigt wieder:
+Der Header zeigt jetzt:
 
 ```text
-CASAMBI JUNGLE // v0.3.9
+🌴 CASAMBI JUNGLE // v0.4.0
+powered by Sambesi
 NEON CANOPY CONTROL CENTER
 ```
 
-### Kompakter Jungle-Block oben im HOME-Reiter
+### Jungle Tabs
 
-Der HOME-Reiter startet jetzt mit:
-
-```text
-CASAMBI JUNGLE
-Network: Kalli
-Units: 1  |  Scenes: 2
-MQTT mqtt.kallii.net:1883
-```
-
-Der technische `HOME DASHBOARD`-Block wurde dadurch wieder mehr in den Neon/Jungle-Stil gebracht.
-
-### Light Control wichtiger und größer
-
-Die Lichtsteuerung ist jetzt stärker hervorgehoben:
-
-- `Unit 1 Control` wurde zu `Light Control`
-- ON/OFF/40%-Buttons sind größer
-- Szenenbuttons sind kompakter und besser lesbar
-
-### Signal Canopy bleibt erhalten
-
-Die Signal-Canopy-Karte bleibt erhalten und nutzt die kurzen Labels:
+Die Reiter wirken jetzt dschungelmäßiger:
 
 ```text
-BLE RX
-BLE TX
-MQTT verbunden
-MQTT IN
-MQTT OUT
-SMB Logging
-Webserver
-TCP Logstream
+🌴 HOME     aktiver Reiter
+🌿 SETUP    inaktiver Reiter
+🌿 CTRL
+🌿 SET
+🌿 ADV
 ```
 
-## Weiterhin enthalten
+Der aktive Reiter bleibt cyan hervorgehoben, die inaktiven Reiter bleiben grün.
 
-- aktiver Tab wird cyan hervorgehoben
-- SETUP-Reiter mit Passwortfeld
-- Setup-Statusanzeige
-- MQTT verbunden LED
-- Einstellungen speichern Button bei Änderungen
-- Casambi Discovery Ergebnisliste
-- Home Assistant Discovery
+### Casambi Jungle Karte mit Icons
+
+Der HOME-Reiter startet jetzt mit einer kompakteren Jungle-Karte:
+
+```text
+🌴 Kalli
+💡 Units: 1  |  🎭 Scenes: 2
+📡 MQTT mqtt.kallii.net:1883
+```
+
+### Vorhandene UI-Verbesserungen bleiben erhalten
+
+- Signal Canopy bleibt erhalten
+- Light Control bleibt größer hervorgehoben
+- Aktive Tabs bleiben erhalten
+- SETUP-Reiter mit Passwortfeld bleibt erhalten
+- MQTT verbunden LED bleibt erhalten
+- Einstellungen speichern Button bei Änderungen bleibt erhalten
 
 ## Build
 
