@@ -43,7 +43,7 @@ object DashboardExporter {
             if (webUrl.isNotBlank()) appendLine("      Webinterface: $webUrl")
             appendLine("")
             appendLine("  - type: custom:casambi-jungle-card")
-            appendLine("    title: "Casambi Jungle Direct"")
+            appendLine("    title: \"Casambi Jungle Direct\"")
             appendLine("    # Die Card erkennt Casambi/HACS Entitaeten automatisch.")
             appendLine("    # Falls mehrere Bridges/Units vorhanden sind, bitte im visuellen Editor Auto-detect ausführen oder Entity IDs manuell pinnen.")
         }

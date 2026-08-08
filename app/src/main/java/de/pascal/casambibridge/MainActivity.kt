@@ -304,7 +304,6 @@ class MainActivity : AppCompatActivity() {
             setPadding(0, 6, 0, 8)
         })
         val sigGrid1 = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        val sigGrid1 = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         statusCard.addView(sigGrid1)
         val sigRowOne = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         val sigRowTwo = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
