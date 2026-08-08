@@ -1,24 +1,42 @@
-# Casambi Bridge v0.3.8
+# Casambi Bridge v0.3.9
 
-v0.3.8 ist ein HOME-Dashboard-Polish auf Basis von v0.3.7.
+v0.3.9 ist ein HOME/Jungle-Polish auf Basis von v0.3.7.
 
-## Neu in v0.3.8
+## Neu in v0.3.9
 
-### HOME Dashboard
+### Casambi Jungle ist zurück
 
-Der HOME-Reiter hat jetzt oben eine kompakte Übersicht:
+Der Header zeigt wieder:
 
 ```text
-Netzwerk: <Name>
-Unit: 1 • Szenen: <Anzahl>
-MQTT: <Host>:<Port>
+CASAMBI JUNGLE // v0.3.9
+NEON CANOPY CONTROL CENTER
 ```
 
-Damit sieht man direkt, ob das Setup grundsätzlich vollständig ist.
+### Kompakter Jungle-Block oben im HOME-Reiter
 
-### Kürzere Signal-Labels
+Der HOME-Reiter startet jetzt mit:
 
-Die Signal-LEDs sind auf kleinen Displays besser lesbar:
+```text
+CASAMBI JUNGLE
+Network: Kalli
+Units: 1  |  Scenes: 2
+MQTT mqtt.kallii.net:1883
+```
+
+Der technische `HOME DASHBOARD`-Block wurde dadurch wieder mehr in den Neon/Jungle-Stil gebracht.
+
+### Light Control wichtiger und größer
+
+Die Lichtsteuerung ist jetzt stärker hervorgehoben:
+
+- `Unit 1 Control` wurde zu `Light Control`
+- ON/OFF/40%-Buttons sind größer
+- Szenenbuttons sind kompakter und besser lesbar
+
+### Signal Canopy bleibt erhalten
+
+Die Signal-Canopy-Karte bleibt erhalten und nutzt die kurzen Labels:
 
 ```text
 BLE RX
@@ -31,16 +49,9 @@ Webserver
 TCP Logstream
 ```
 
-### Klarere HOME-Bereiche
-
-- `Unit 1 Control` wurde zu `Light Control`
-- `System Status` wurde zu `Bridge Status`
-- Szenenbuttons im HOME-Reiter sind kürzer und größer lesbar
-- Status-Texte sind weniger nach Roadmap und mehr nach echtem Betriebsstatus formuliert
-
 ## Weiterhin enthalten
 
-- Aktiver Tab wird cyan hervorgehoben
+- aktiver Tab wird cyan hervorgehoben
 - SETUP-Reiter mit Passwortfeld
 - Setup-Statusanzeige
 - MQTT verbunden LED

@@ -107,7 +107,7 @@ class MainActivity : AppCompatActivity() {
 
         val headerRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         headerRow.addView(TextView(this).apply {
-            text = "CASAMBI BRIDGE // v0.3.8"
+            text = "CASAMBI JUNGLE // v0.3.9"
             textSize = 21f
             setTextColor(leaf)
             setTypeface(Typeface.MONOSPACE, Typeface.BOLD)
@@ -240,6 +240,14 @@ class MainActivity : AppCompatActivity() {
             minimumHeight = 0
             setPadding(4, 8, 4, 8)
         }
+        fun wideButton(text: String, weight: Float = 1f) = button(text).apply {
+            textSize = 11f
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, weight).apply {
+                setMargins(4, 4, 4, 4)
+            }
+            minHeight = 52
+            minimumHeight = 52
+        }
 
         fun led(): TextView = TextView(this).apply {
             text = "●"
@@ -265,23 +273,16 @@ class MainActivity : AppCompatActivity() {
         }
 
         currentPage = homePage
-        val dashboardCard = card("Home Dashboard")
-        dashboardCard.addView(TextView(this).apply {
+        val jungleCard = card("Casambi Jungle")
+        jungleCard.addView(TextView(this).apply {
             val sceneCount = SceneStore.loadScenes(this@MainActivity).size
             val networkName = c.casambiNetworkName.ifBlank { "nicht gesetzt" }
-            val mqttText = if (c.mqttHost.isNotBlank()) "${c.mqttHost}:${c.mqttPort}" else "nicht eingerichtet"
-            text = "Netzwerk: $networkName\nUnit: 1 • Szenen: $sceneCount\nMQTT: $mqttText"
+            val mqttText = if (c.mqttHost.isNotBlank()) "MQTT ${c.mqttHost}:${c.mqttPort}" else "MQTT nicht eingerichtet"
+            text = "Network: $networkName\nUnits: 1  |  Scenes: $sceneCount\n$mqttText"
             textSize = 12f
             setTextColor(textMain)
             setTypeface(Typeface.MONOSPACE, Typeface.BOLD)
-            setPadding(0, 8, 0, 8)
-        })
-        dashboardCard.addView(TextView(this).apply {
-            text = "Quick Overview: Setup, Steuerung und Home Assistant Discovery sind aktiv vorbereitet."
-            textSize = 10f
-            setTextColor(textMuted)
-            setTypeface(Typeface.MONOSPACE, Typeface.NORMAL)
-            setPadding(0, 0, 0, 2)
+            setPadding(0, 6, 0, 2)
         })
 
         val statusCard = card("Signal Canopy")
@@ -326,9 +327,9 @@ class MainActivity : AppCompatActivity() {
         controlCard.addView(lampValueText)
         val quickRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         controlCard.addView(quickRow)
-        val onBtn = button("ON")
-        val offBtn = button("OFF")
-        val p40 = button("40%")
+        val onBtn = wideButton("ON", 1.2f)
+        val offBtn = wideButton("OFF", 1.2f)
+        val p40 = wideButton("40%", 0.85f).apply { textSize = 10f }
         listOf(onBtn, offBtn, p40).forEach { quickRow.addView(it) }
         val seek = SeekBar(this).apply { max = 255; progress = RuntimeStatus.lastBrightness.coerceIn(0,255) }
         controlCard.addView(label("Auto Apply Brightness"))
@@ -384,7 +385,14 @@ class MainActivity : AppCompatActivity() {
                 })
             } else {
                 scenes.forEach { scene ->
-                    val b = button(scene.name.uppercase())
+                    val b = button(scene.name.uppercase()).apply {
+                        textSize = 11f
+                        minHeight = 52
+                        minimumHeight = 52
+                        layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                            setMargins(0, 4, 0, 4)
+                        }
+                    }
                     b.setOnClickListener { sceneCommand(scene.id, scene.name) }
                     scenesContainer.addView(b)
                 }

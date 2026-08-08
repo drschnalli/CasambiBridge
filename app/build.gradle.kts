@@ -1,6 +1,6 @@
 plugins { id("com.android.application"); id("org.jetbrains.kotlin.android") }
 android { namespace = "de.pascal.casambibridge"; compileSdk = 35
-    defaultConfig { applicationId = "de.pascal.casambibridge"; minSdk = 27; targetSdk = 35; versionCode = 78; versionName = "0.3.8" }
+    defaultConfig { applicationId = "de.pascal.casambibridge"; minSdk = 27; targetSdk = 35; versionCode = 79; versionName = "0.3.9" }
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
     kotlinOptions { jvmTarget = "17" }
 }
