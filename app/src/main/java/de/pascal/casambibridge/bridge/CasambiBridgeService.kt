@@ -104,7 +104,7 @@ class CasambiBridgeService : Service() {
             it.publishDiscoveryForScenes(SceneStore.loadScenes(this))
             it.publishDiscoveryForStatusEntities()
             it.publishDiscoveryForBridgeSettings()
-            // v0.5.2 MQTT hotfix: diagnostics discovery/state publishing disabled at startup
+            // v0.5.3: diagnostics discovery/state publishing remains disabled at startup to prevent MQTT publish storms.
             it.publishBridgeSettingsState(config)
             it.publishBridgeStatus("online", "connecting")
             it.publishState("OFF", 0)
@@ -252,7 +252,6 @@ class CasambiBridgeService : Service() {
             if (withMqtt) {
                 mqtt?.publishAvailability(true)
                 mqtt?.publishBridgeStatus("online", "connected")
-                mqtt?.publishDiagnosticStates()
             }
         }
         override fun onDisconnected() {
@@ -262,7 +261,6 @@ class CasambiBridgeService : Service() {
             updateNotification("BLE getrennt")
             if (withMqtt) {
                 mqtt?.publishBridgeStatus("online", "disconnected")
-                mqtt?.publishDiagnosticStates()
                 handler.postDelayed({ if (generation == startGeneration) ble?.connect() }, 5000)
             }
         }
@@ -277,7 +275,6 @@ class CasambiBridgeService : Service() {
             LogBus.log("MQTT State Unit $id -> state=$state brightness=$brightness raw=$rawStateHex")
             if (withMqtt) {
                 mqtt?.publishLightState(id, state, brightness, online, rawStateHex)
-                mqtt?.publishDiagnosticStates()
             }
         }
     })

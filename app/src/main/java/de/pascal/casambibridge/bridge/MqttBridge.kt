@@ -54,9 +54,9 @@ class MqttBridge(
         })
         val options = MqttConnectOptions().apply {
             isAutomaticReconnect = true
-            isCleanSession = true  
-            maxInflight = 200  
-            connectionTimeout = 10  
+            isCleanSession = true
+            maxInflight = 200
+            connectionTimeout = 10
             keepAliveInterval = 30
             if (config.mqttUser.isNotBlank()) userName = config.mqttUser
             if (config.mqttPassword.isNotBlank()) password = config.mqttPassword.toCharArray()
@@ -155,7 +155,7 @@ class MqttBridge(
 
     fun publishTest() = publish(
         topic("test"),
-        JSONObject().put("bridge", "casambi").put("version", "0.5.2").toString(),
+        JSONObject().put("bridge", "casambi").put("version", "0.5.3").toString(),
         false
     )
 
@@ -240,10 +240,10 @@ class MqttBridge(
     }
 
     fun publishDiscoveryForDiagnostics() {
-        log("MQTT Diagnostics Discovery in v0.5.2 voruebergehend deaktiviert")
+        log("MQTT Diagnostics Discovery in v0.5.3 voruebergehend deaktiviert")
     }
     fun publishDiagnosticStates() {
-        // v0.5.2 hotfix: disabled to avoid MQTT publish storms on Android/Paho.
+        // v0.5.3: disabled to avoid MQTT publish storms on Android/Paho.
         return
     }
     fun publishBridgeStatus(bridge: String, ble: String) {
@@ -301,7 +301,6 @@ class MqttBridge(
 
     fun disconnect() {
         RuntimeStatus.mqttConnected = false
-        publishDiagnosticStates()
         try { client?.disconnect()?.waitForCompletion(1500) } catch (_: Throwable) {}
         client = null
         synchronized(subscribeLock) { subscribed = false }
@@ -312,20 +311,20 @@ class MqttBridge(
         .put("name", "Android Casambi Bridge")
         .put("manufacturer", "Pascal/Copilot")
         .put("model", "Android BLE Bridge")
-        .put("sw_version", "0.5.2")
+        .put("sw_version", "0.5.3")
 
-    private fun publish(topicName: String, payload: String, retained: Boolean) {  
-        val mqttClient = client ?: return  
-        if (!mqttClient.isConnected) return  
-        try {  
-            val msg = MqttMessage(payload.toByteArray(Charsets.UTF_8)).apply {  
-                qos = 0  
-                isRetained = retained  
-            }  
-            mqttClient.publish(topicName, msg)  
-        } catch (t: Throwable) {  
-            RuntimeStatus.mqttConnected = false  
-            log("MQTT publish ignoriert: ${t.message ?: t.javaClass.simpleName} topic=$topicName")  
-        }  
+    private fun publish(topicName: String, payload: String, retained: Boolean) {
+        val mqttClient = client ?: return
+        if (!mqttClient.isConnected) return
+        try {
+            val msg = MqttMessage(payload.toByteArray(Charsets.UTF_8)).apply {
+                qos = 0
+                isRetained = retained
+            }
+            mqttClient.publish(topicName, msg)
+        } catch (t: Throwable) {
+            RuntimeStatus.mqttConnected = false
+            log("MQTT publish ignoriert: ${t.message ?: t.javaClass.simpleName} topic=$topicName")
+        }
     }
 }

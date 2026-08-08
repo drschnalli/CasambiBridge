@@ -24,7 +24,6 @@ object DashboardExporter {
         val unitTitle = yamlText(units.firstOrNull()?.name ?: "Casambi Light 1")
         val networkName = yamlText(config.casambiNetworkName.ifBlank { "Casambi Bridge" })
         val groupInfo = yamlText(if (groups.isEmpty()) "Keine Gruppen gespeichert" else groups.joinToString { it.name })
-
         val b = StringBuilder()
         b.appendLine("type: vertical-stack")
         b.appendLine("cards:")
@@ -38,10 +37,6 @@ object DashboardExporter {
         b.appendLine("    chips:")
         b.appendChip("sensor.android_casambi_bridge_casambi_bridge_status")
         b.appendChip("sensor.android_casambi_bridge_casambi_ble_status")
-        b.appendChip("binary_sensor.android_casambi_bridge_casambi_mqtt_connected")
-        b.appendChip("sensor.android_casambi_bridge_casambi_bridge_uptime")
-        b.appendChip("sensor.android_casambi_bridge_casambi_scene_count")
-        b.appendChip("sensor.android_casambi_bridge_casambi_group_count")
         b.appendLine("")
         b.appendSeparator("Light Control", "mdi:lightbulb")
         b.appendLine("  - type: custom:mushroom-light-card")
@@ -103,81 +98,16 @@ object DashboardExporter {
         b.appendLine("    content: |")
         b.appendLine("      **Casambi Gruppen:** $groupInfo")
         b.appendLine("      ")
-        b.appendLine("      Dashboard automatisch erzeugt durch Casambi Bridge v0.5.2.")
+        b.appendLine("      Dashboard automatisch erzeugt durch Casambi Bridge v0.5.3.")
         return b.toString()
     }
 
-    private fun StringBuilder.appendSeparator(name: String, icon: String) {
-        appendLine("  - type: custom:bubble-card")
-        appendLine("    card_type: separator")
-        appendLine("    name: \"${yamlText(name)}\"")
-        appendLine("    icon: $icon")
-        appendLine("")
-    }
-
-    private fun StringBuilder.appendChip(entityId: String) {
-        appendLine("      - type: entity")
-        appendLine("        entity: $entityId")
-    }
-
-    private fun StringBuilder.appendServiceButton(primary: String, secondary: String, icon: String, color: String, service: String, entityId: String) {
-        appendLine("      - type: custom:mushroom-template-card")
-        appendLine("        primary: \"${yamlText(primary)}\"")
-        appendLine("        secondary: \"${yamlText(secondary)}\"")
-        appendLine("        icon: $icon")
-        appendLine("        icon_color: $color")
-        appendLine("        layout: vertical")
-        appendLine("        tap_action:")
-        appendLine("          action: call-service")
-        appendLine("          service: $service")
-        appendLine("          target:")
-        appendLine("            entity_id: $entityId")
-    }
-
-    private fun StringBuilder.appendLight40Button() {
-        appendLine("      - type: custom:mushroom-template-card")
-        appendLine("        primary: \"40%\"")
-        appendLine("        secondary: \"Soft Light\"")
-        appendLine("        icon: mdi:brightness-5")
-        appendLine("        icon_color: amber")
-        appendLine("        layout: vertical")
-        appendLine("        tap_action:")
-        appendLine("          action: call-service")
-        appendLine("          service: light.turn_on")
-        appendLine("          target:")
-        appendLine("            entity_id: light.android_casambi_bridge_casambi_light_1")
-        appendLine("          data:")
-        appendLine("            brightness_pct: 40")
-    }
-
-    private fun StringBuilder.appendButtonPress(primary: String, secondary: String, icon: String, color: String, entityId: String) {
-        appendLine("      - type: custom:mushroom-template-card")
-        appendLine("        entity: $entityId")
-        appendLine("        primary: \"${yamlText(primary)}\"")
-        appendLine("        secondary: \"${yamlText(secondary)}\"")
-        appendLine("        icon: $icon")
-        appendLine("        icon_color: $color")
-        appendLine("        layout: vertical")
-        appendLine("        tap_action:")
-        appendLine("          action: call-service")
-        appendLine("          service: button.press")
-        appendLine("          target:")
-        appendLine("            entity_id: $entityId")
-    }
-
-    private fun StringBuilder.appendEntitySwitch(entityId: String, name: String, icon: String) {
-        appendLine("      - type: custom:mushroom-entity-card")
-        appendLine("        entity: $entityId")
-        appendLine("        name: \"${yamlText(name)}\"")
-        appendLine("        icon: $icon")
-        appendLine("        tap_action:")
-        appendLine("          action: toggle")
-    }
-
-    private fun slug(value: String, fallback: String): String {
-        val s = value.lowercase().replace(Regex("[^a-z0-9]+"), "_").trim('_')
-        return s.ifBlank { fallback }
-    }
-
+    private fun StringBuilder.appendSeparator(name: String, icon: String) { appendLine("  - type: custom:bubble-card"); appendLine("    card_type: separator"); appendLine("    name: \"${yamlText(name)}\""); appendLine("    icon: $icon"); appendLine("") }
+    private fun StringBuilder.appendChip(entityId: String) { appendLine("      - type: entity"); appendLine("        entity: $entityId") }
+    private fun StringBuilder.appendServiceButton(primary: String, secondary: String, icon: String, color: String, service: String, entityId: String) { appendLine("      - type: custom:mushroom-template-card"); appendLine("        primary: \"${yamlText(primary)}\""); appendLine("        secondary: \"${yamlText(secondary)}\""); appendLine("        icon: $icon"); appendLine("        icon_color: $color"); appendLine("        layout: vertical"); appendLine("        tap_action:"); appendLine("          action: call-service"); appendLine("          service: $service"); appendLine("          target:"); appendLine("            entity_id: $entityId") }
+    private fun StringBuilder.appendLight40Button() { appendLine("      - type: custom:mushroom-template-card"); appendLine("        primary: \"40%\""); appendLine("        secondary: \"Soft Light\""); appendLine("        icon: mdi:brightness-5"); appendLine("        icon_color: amber"); appendLine("        layout: vertical"); appendLine("        tap_action:"); appendLine("          action: call-service"); appendLine("          service: light.turn_on"); appendLine("          target:"); appendLine("            entity_id: light.android_casambi_bridge_casambi_light_1"); appendLine("          data:"); appendLine("            brightness_pct: 40") }
+    private fun StringBuilder.appendButtonPress(primary: String, secondary: String, icon: String, color: String, entityId: String) { appendLine("      - type: custom:mushroom-template-card"); appendLine("        entity: $entityId"); appendLine("        primary: \"${yamlText(primary)}\""); appendLine("        secondary: \"${yamlText(secondary)}\""); appendLine("        icon: $icon"); appendLine("        icon_color: $color"); appendLine("        layout: vertical"); appendLine("        tap_action:"); appendLine("          action: call-service"); appendLine("          service: button.press"); appendLine("          target:"); appendLine("            entity_id: $entityId") }
+    private fun StringBuilder.appendEntitySwitch(entityId: String, name: String, icon: String) { appendLine("      - type: custom:mushroom-entity-card"); appendLine("        entity: $entityId"); appendLine("        name: \"${yamlText(name)}\""); appendLine("        icon: $icon"); appendLine("        tap_action:"); appendLine("          action: toggle") }
+    private fun slug(value: String, fallback: String): String { val s = value.lowercase().replace(Regex("[^a-z0-9]+"), "_").trim('_'); return s.ifBlank { fallback } }
     private fun yamlText(value: String): String = value.replace("\\", "\\\\").replace("\"", "'")
 }
