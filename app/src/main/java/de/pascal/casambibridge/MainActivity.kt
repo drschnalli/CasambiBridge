@@ -107,7 +107,7 @@ class MainActivity : AppCompatActivity() {
 
         val headerRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         headerRow.addView(TextView(this).apply {
-            text = "CASAMBI BRIDGE // v0.3.7"
+            text = "CASAMBI BRIDGE // v0.3.8"
             textSize = 21f
             setTextColor(leaf)
             setTypeface(Typeface.MONOSPACE, Typeface.BOLD)
@@ -265,17 +265,36 @@ class MainActivity : AppCompatActivity() {
         }
 
         currentPage = homePage
+        val dashboardCard = card("Home Dashboard")
+        dashboardCard.addView(TextView(this).apply {
+            val sceneCount = SceneStore.loadScenes(this@MainActivity).size
+            val networkName = c.casambiNetworkName.ifBlank { "nicht gesetzt" }
+            val mqttText = if (c.mqttHost.isNotBlank()) "${c.mqttHost}:${c.mqttPort}" else "nicht eingerichtet"
+            text = "Netzwerk: $networkName\nUnit: 1 • Szenen: $sceneCount\nMQTT: $mqttText"
+            textSize = 12f
+            setTextColor(textMain)
+            setTypeface(Typeface.MONOSPACE, Typeface.BOLD)
+            setPadding(0, 8, 0, 8)
+        })
+        dashboardCard.addView(TextView(this).apply {
+            text = "Quick Overview: Setup, Steuerung und Home Assistant Discovery sind aktiv vorbereitet."
+            textSize = 10f
+            setTextColor(textMuted)
+            setTypeface(Typeface.MONOSPACE, Typeface.NORMAL)
+            setPadding(0, 0, 0, 2)
+        })
+
         val statusCard = card("Signal Canopy")
         val sigGrid1 = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         statusCard.addView(sigGrid1)
-        bleRxLed = signalRow(sigGrid1, "Casambi Bluetooth RX")
-        bleTxLed = signalRow(sigGrid1, "Casambi Bluetooth TX")
+        bleRxLed = signalRow(sigGrid1, "BLE RX")
+        bleTxLed = signalRow(sigGrid1, "BLE TX")
         mqttStatusLed = signalRow(sigGrid1, "MQTT verbunden")
-        mqttInLed = signalRow(sigGrid1, "MQTT Eingang")
-        mqttOutLed = signalRow(sigGrid1, "MQTT Ausgang")
-        smbLed = signalRow(sigGrid1, "SMB Logging aktiv")
-        webLed = signalRow(sigGrid1, "Webserver aktiv")
-        tcpLed = signalRow(sigGrid1, "TCP Logstream aktiv")
+        mqttInLed = signalRow(sigGrid1, "MQTT IN")
+        mqttOutLed = signalRow(sigGrid1, "MQTT OUT")
+        smbLed = signalRow(sigGrid1, "SMB Logging")
+        webLed = signalRow(sigGrid1, "Webserver")
+        tcpLed = signalRow(sigGrid1, "TCP Logstream")
         statusText = TextView(this).apply {
             text = "Live-Log in der App entfernt. Diagnose laeuft primaer ueber SMB."
             textSize = 11f
@@ -295,7 +314,7 @@ class MainActivity : AppCompatActivity() {
         })
         currentPage = homePage
 
-        val controlCard = card("Unit 1 Control")
+        val controlCard = card("Light Control")
         val lampLed = signalRow(controlCard, "Unit 1 Connected / Online")
         val lampValueText = TextView(this).apply {
             text = "Status: ${RuntimeStatus.lastState} ${RuntimeStatus.lastBrightness}"
@@ -318,24 +337,24 @@ class MainActivity : AppCompatActivity() {
         lampValueRef = lampValueText
         setLed(lampLed, RuntimeStatus.lastOnline)
 
-        val roadmapCard = card("System Status")
+        val roadmapCard = card("Bridge Status")
         roadmapCard.addView(TextView(this).apply {
-            text = "SCENES: App/Web/MQTT aktiv • LIGHT: App/Web/MQTT aktiv"
+            text = "Licht: App/Web/MQTT • Szenen: App/Web/MQTT/Home Assistant"
             textSize = 12f
             setTextColor(lime)
             setTypeface(Typeface.MONOSPACE, Typeface.BOLD)
             setPadding(0, 6, 0, 4)
         })
         roadmapCard.addView(TextView(this).apply {
-            text = "KEY: API-managed • SETUP: Scan, Auswahl, Passwort, API Fetch • NEXT: UI polish"
+            text = "Setup: Scan → Auswahl → Passwort → API Fetch"
             textSize = 11f
             setTextColor(textMuted)
             setTypeface(Typeface.MONOSPACE, Typeface.NORMAL)
             setPadding(0, 4, 0, 4)
         })
         val roadmapRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        val scenePreview = button("SCENES SOON")
-        val groupPreview = button("GROUPS SOON")
+        val scenePreview = button("SCENES OK")
+        val groupPreview = button("GROUPS READY")
         scenePreview.isEnabled = false
         groupPreview.isEnabled = false
         roadmapRow.addView(scenePreview)
@@ -365,7 +384,7 @@ class MainActivity : AppCompatActivity() {
                 })
             } else {
                 scenes.forEach { scene ->
-                    val b = button("SCENE: ${scene.name}")
+                    val b = button(scene.name.uppercase())
                     b.setOnClickListener { sceneCommand(scene.id, scene.name) }
                     scenesContainer.addView(b)
                 }
