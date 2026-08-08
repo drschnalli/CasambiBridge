@@ -107,7 +107,7 @@ class MainActivity : AppCompatActivity() {
 
         val headerRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         headerRow.addView(TextView(this).apply {
-            text = "CASAMBI BRIDGE // v0.3.4"
+            text = "CASAMBI BRIDGE // v0.3.5"
             textSize = 21f
             setTextColor(leaf)
             setTypeface(Typeface.MONOSPACE, Typeface.BOLD)
@@ -312,7 +312,7 @@ class MainActivity : AppCompatActivity() {
             setPadding(0, 6, 0, 4)
         })
         roadmapCard.addView(TextView(this).apply {
-            text = "KEY: API-managed • SETUP: Scan, Auswahl, API Fetch • NEXT: UI polish"
+            text = "KEY: API-managed • SETUP: Scan, Auswahl, Passwort, API Fetch • NEXT: UI polish"
             textSize = 11f
             setTextColor(textMuted)
             setTypeface(Typeface.MONOSPACE, Typeface.NORMAL)
@@ -390,9 +390,7 @@ class MainActivity : AppCompatActivity() {
         val smbPassword = field(configCard, "SMB Passwort", c.smbPassword, true)
         val tcpPort = field(configCard, "TCP Logstream Port", c.tcpLogPort.toString())
         val webPort = field(configCard, "Webinterface Port", c.webInterfacePort.toString())
-        val saveSettings = button("EINSTELLUNGEN SPEICHERN").apply {
-            visibility = View.GONE
-        }
+        val saveSettings = button("EINSTELLUNGEN SPEICHERN").apply { visibility = View.GONE }
         configCard.addView(saveSettings)
 
         fun switchRow(parent: LinearLayout, text: String, checked: Boolean): Pair<Switch, TextView> {
@@ -486,7 +484,7 @@ class MainActivity : AppCompatActivity() {
         )
 
         fun setSwitchLeds() {
-            setLed(mqttStatusLed, false)
+            if (mqttHost.text.toString().isBlank()) setLed(mqttStatusLed, false)
             setLed(smbLed, smbSwitch.isChecked)
             setLed(webLed, webSwitch.isChecked)
             setLed(tcpLed, tcpSwitch.isChecked)
@@ -497,13 +495,11 @@ class MainActivity : AppCompatActivity() {
         }
         setSwitchLeds()
         var suppressDirty = false
-        fun markSettingsDirty() {
-            if (!suppressDirty) saveSettings.visibility = View.VISIBLE
-        }
-        fun watchField(e: EditText) {
+        fun markSettingsDirty() { if (!suppressDirty) saveSettings.visibility = View.VISIBLE }
+        fun watchField(e: EditText, onChange: (() -> Unit)? = null) {
             e.addTextChangedListener(object : TextWatcher {
                 override fun beforeTextChanged(text: CharSequence?, start: Int, count: Int, after: Int) {}
-                override fun onTextChanged(text: CharSequence?, start: Int, before: Int, count: Int) { markSettingsDirty() }
+                override fun onTextChanged(text: CharSequence?, start: Int, before: Int, count: Int) { markSettingsDirty(); onChange?.invoke() }
                 override fun afterTextChanged(editable: Editable?) {}
             })
         }
@@ -516,7 +512,7 @@ class MainActivity : AppCompatActivity() {
         currentPage = setupPage
         val setupCard = card("Casambi Setup")
         setupCard.addView(TextView(this).apply {
-            text = "1. Scan starten  2. Gerät auswählen  3. Netzwerkpasswort eintragen  4. Hinzufügen / API Fetch"
+            text = "1. Scan starten  2. Gerät auswählen  3. Passwort eingeben  4. Hinzufügen / API Fetch"
             textSize = 10f
             setTextColor(textMuted)
             setTypeface(Typeface.MONOSPACE, Typeface.NORMAL)
@@ -526,16 +522,16 @@ class MainActivity : AppCompatActivity() {
         val setupReset = button("RESET CASAMBI CONFIG")
         val setupAddFetch = button("ADD / API FETCH")
         val setupDeviceList = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        setupCard.addView(setupScan)
-        setupCard.addView(setupDeviceList)
-        setupCard.addView(label("Netzwerkpasswort"))
-        setupCard.addView(TextView(this).apply {
-            text = "Bitte im SET-Tab im Feld 'Casambi Passwort optional' eintragen. Dieses Passwort wird für den API Fetch verwendet."
+        val setupStatus = TextView(this).apply {
             textSize = 10f
             setTextColor(textMuted)
             setTypeface(Typeface.MONOSPACE, Typeface.NORMAL)
-            setPadding(0, 4, 0, 8)
-        })
+            setPadding(0, 8, 0, 8)
+        }
+        setupCard.addView(setupScan)
+        setupCard.addView(setupDeviceList)
+        val setupPass = field(setupCard, "Netzwerkpasswort", c.casambiPassword, true)
+        setupCard.addView(setupStatus)
         setupCard.addView(setupAddFetch)
         setupCard.addView(setupReset)
         setupCard.addView(TextView(this).apply {
@@ -545,7 +541,15 @@ class MainActivity : AppCompatActivity() {
             setTypeface(Typeface.MONOSPACE, Typeface.NORMAL)
             setPadding(0, 8, 0, 0)
         })
-
+        fun refreshSetupStatus() {
+            val scenes = SceneStore.loadScenes(this)
+            val hasMac = mac.text.toString().isNotBlank()
+            val hasPassword = setupPass.text.toString().isNotBlank() || casambiPass.text.toString().isNotBlank()
+            val hasKey = keyHex.text.toString().isNotBlank()
+            setupStatus.text = "Gerät: ${if (hasMac) "OK" else "fehlt"} • Passwort: ${if (hasPassword) "OK" else "fehlt"} • API Key: ${if (hasKey) "OK" else "fehlt"} • Szenen: ${scenes.size}"
+            setupAddFetch.isEnabled = hasMac && hasPassword
+            setupAddFetch.alpha = if (setupAddFetch.isEnabled) 1.0f else 0.45f
+        }
         fun refreshSetupDeviceList() {
             setupDeviceList.removeAllViews()
             if (discoveredCasambiDevices.isEmpty()) {
@@ -556,6 +560,7 @@ class MainActivity : AppCompatActivity() {
                     setTypeface(Typeface.MONOSPACE, Typeface.NORMAL)
                     setPadding(0, 10, 0, 10)
                 })
+                refreshSetupStatus()
                 return
             }
             discoveredCasambiDevices.values.sortedByDescending { it.rssi }.forEach { d ->
@@ -570,12 +575,18 @@ class MainActivity : AppCompatActivity() {
                 val choose = button("AUSWÄHLEN")
                 choose.setOnClickListener {
                     mac.setText(d.address)
+                    refreshSetupStatus()
                     statusText.text = "Casambi Gerät ausgewählt: ${d.address}"
                     LogBus.log("Setup Device ausgewaehlt: name=${d.name} address=${d.address} rssi=${d.rssi} manufacturer963=${d.manufacturer963} casaUuid=${d.casaUuid}")
                 }
                 row.addView(choose)
                 setupDeviceList.addView(row)
             }
+            refreshSetupStatus()
+        }
+        watchField(setupPass) {
+            if (!suppressDirty && casambiPass.text.toString() != setupPass.text.toString()) casambiPass.setText(setupPass.text.toString())
+            refreshSetupStatus()
         }
         refreshSetupDeviceList()
 
@@ -630,7 +641,7 @@ class MainActivity : AppCompatActivity() {
 
         fun applyConfig(x: BridgeConfig) {
             suppressDirty = true
-            mac.setText(x.casambiMac); network.setText(x.casambiNetworkName); casambiPass.setText(x.casambiPassword)
+            mac.setText(x.casambiMac); network.setText(x.casambiNetworkName); casambiPass.setText(x.casambiPassword); setupPass.setText(x.casambiPassword)
             protocol.setText(x.casambiProtocolVersion.toString()); keyId.setText(x.casambiKeyId.toString()); keyHex.setText(x.casambiKeyHex)
             mqttHost.setText(x.mqttHost); mqttPort.setText(x.mqttPort.toString()); mqttUser.setText(x.mqttUser); mqttPass.setText(x.mqttPassword)
             baseTopic.setText(x.baseTopic); discoveryPrefix.setText(x.discoveryPrefix)
@@ -638,17 +649,20 @@ class MainActivity : AppCompatActivity() {
             tcpPort.setText(x.tcpLogPort.toString()); webPort.setText(x.webInterfacePort.toString())
             smbSwitch.isChecked = x.smbDebugEnabled; webSwitch.isChecked = x.webInterfaceEnabled; tcpSwitch.isChecked = x.tcpLogEnabled; autoApiSwitch.isChecked = x.autoApiFetchEnabled
             setSwitchLeds()
+            refreshSetupStatus()
             saveSettings.visibility = View.GONE
             suppressDirty = false
         }
 
         fun saveNow() {
+            if (setupPass.text.toString() != casambiPass.text.toString()) casambiPass.setText(setupPass.text.toString())
             val cfg = currentConfig()
             ConfigStore.save(this, cfg)
             DebugExporter.configure(cfg)
             TcpLogServer.configure(cfg)
             WebControlServer.configure(this, cfg)
             saveSettings.visibility = View.GONE
+            refreshSetupStatus()
             statusText.text = "Konfiguration gespeichert"
             LogBus.log("Konfiguration gespeichert")
         }
@@ -750,6 +764,7 @@ class MainActivity : AppCompatActivity() {
                     runOnUiThread {
                         applyConfig(updated)
                         refreshSceneButtons()
+                        refreshSetupStatus()
                         statusText.text = "API Fetch OK: ${result.rawSummary}"
                         LogBus.log("Casambi API Fetch OK: ${result.rawSummary}")
                         if (sceneNames.isNotBlank()) LogBus.log("Scenes: $sceneNames")

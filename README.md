@@ -1,53 +1,57 @@
-# Casambi Bridge v0.3.4
+# Casambi Bridge v0.3.5
 
-v0.3.4 erweitert v0.3.3 um kleinere, aber wichtige UI-Verbesserungen nach dem ersten realen Setup-Test.
+v0.3.5 poliert den SETUP-Flow weiter und baut auf dem bestätigten v0.3.4-Stand auf.
 
-## Neu in v0.3.4
+## Neu in v0.3.5
 
-### MQTT-Verbindungs-LED im Signal Canopy
+### Passwortfeld direkt im SETUP-Reiter
 
-Im HOME-Tab unter `Signal Canopy` gibt es jetzt eine dauerhafte LED:
-
-```text
-MQTT verbunden
-```
-
-Die LED wird grün, sobald im Log `MQTT verbunden ...` erscheint. Bei MQTT-Fehlern oder Verbindungsverlust wird die LED wieder dunkel.
-
-### Speichern-Button im SET-Reiter
-
-Im `SET`-Reiter gibt es jetzt:
+Der SETUP-Reiter enthält jetzt direkt ein eigenes Feld:
 
 ```text
-EINSTELLUNGEN SPEICHERN
+Netzwerkpasswort
 ```
 
-Der Button ist standardmäßig ausgeblendet und erscheint erst, wenn ein Einstellungsfeld oder Toggle geändert wurde.
+Das Feld synchronisiert sich mit dem bisherigen Feld `Casambi Passwort optional` im SET-Reiter. Damit muss man beim Onboarding nicht mehr zwischen SETUP und SET wechseln.
 
-Nach dem Speichern verschwindet der Button wieder.
+### SETUP-Statusanzeige
 
-### Onboarding-Flow bestätigt
+Im SETUP-Reiter gibt es jetzt eine kompakte Statuszeile:
 
-Der v0.3.3/v0.3.4 Setup-Flow wurde real getestet:
+```text
+Gerät: OK/fehlt • Passwort: OK/fehlt • API Key: OK/fehlt • Szenen: n
+```
+
+Damit ist sofort sichtbar, ob die wichtigsten Setup-Schritte erledigt sind.
+
+### ADD / API FETCH wird erst sinnvoll aktiv
+
+Der Button `ADD / API FETCH` wird optisch abgeschwächt und deaktiviert, solange MAC oder Netzwerkpasswort fehlen. Sobald ein Gerät ausgewählt und ein Passwort eingetragen ist, ist der Button aktiv.
+
+### MQTT-LED und Einstellungen-Speichern bleiben aus v0.3.4
+
+Weiterhin enthalten:
+
+- `MQTT verbunden` LED im HOME-Tab
+- `EINSTELLUNGEN SPEICHERN` im SET-Reiter, nur sichtbar bei Änderungen
+
+## Empfohlener Test
 
 ```text
 RESET CASAMBI CONFIG
 SCAN CASAMBI
-Gerät gefunden
-Gerät ausgewählt
-Netzwerkpasswort manuell hinterlegt
-API Fetch
-Netzwerkname Kalli erkannt
-Unit 1 gefunden und steuerbar
+AUSWÄHLEN
+Netzwerkpasswort direkt im SETUP-Reiter eintragen
+ADD / API FETCH
+Bridge startet
+Szenen erscheinen
+Unit 1 steuerbar
 ```
 
 ## Weiterhin enthalten
 
 - SETUP-Reiter
 - Casambi Discovery Ergebnisliste
-- Gerät auswählen
-- ADD / API FETCH
-- RESET CASAMBI CONFIG
 - Home Assistant Discovery für Szenen, Status und Buttons
 - App/Web/MQTT Lichtsteuerung
 - App/Web/MQTT Szenensteuerung
