@@ -153,7 +153,7 @@ class MqttBridge(
 
     fun publishTest() = publish(
         topic("test"),
-        JSONObject().put("bridge", "casambi").put("version", "0.5.0").toString(),
+        JSONObject().put("bridge", "casambi").put("version", "0.5.1").toString(),
         false
     )
 
@@ -287,7 +287,7 @@ class MqttBridge(
         publish(topic("diagnostics/unit_count"), units.toString(), true)
         publish(topic("diagnostics/group_count"), groups.toString(), true)
         publish(topic("diagnostics/scene_count"), scenes.toString(), true)
-        publish(topic("diagnostics/bridge_version"), "0.5.0", true)
+        publish(topic("diagnostics/bridge_version"), "0.5.1", true)
         publish(topic("diagnostics/bridge_uptime"), RuntimeStatus.uptimeText(), true)
         publish(topic("diagnostics/last_sync"), if (RuntimeStatus.lastSyncMillis > 0) fmt.format(Date(RuntimeStatus.lastSyncMillis)) else "never", true)
         publish(topic("diagnostics/last_unit_update"), if (RuntimeStatus.lastUpdateMillis > 0) fmt.format(Date(RuntimeStatus.lastUpdateMillis)) else "never", true)
@@ -365,7 +365,7 @@ class MqttBridge(
         .put("name", "Android Casambi Bridge")
         .put("manufacturer", "Pascal/Copilot")
         .put("model", "Android BLE Bridge")
-        .put("sw_version", "0.5.0")
+        .put("sw_version", "0.5.1")
 
     private fun publish(topicName: String, payload: String, retained: Boolean) {
         val mqttClient = client ?: return

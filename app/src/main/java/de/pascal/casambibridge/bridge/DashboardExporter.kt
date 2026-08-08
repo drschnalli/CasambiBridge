@@ -13,7 +13,9 @@ object DashboardExporter {
         val dir = DebugExporter.smbDir(config)
         SmbFile(dir, ctx).use { if (!it.exists()) it.mkdirs() }
         val url = dir + FILE
-        SmbFileOutputStream(SmbFile(url, ctx), false).use { it.write(yaml.toByteArray(Charsets.UTF_8)) }
+        SmbFileOutputStream(SmbFile(url, ctx), false).use {
+            it.write(yaml.toByteArray(Charsets.UTF_8))
+        }
         return url
     }
 
@@ -21,228 +23,170 @@ object DashboardExporter {
         val scenes = SceneStore.loadScenes(context)
         val groups = SceneStore.loadGroups(context)
         val units = SceneStore.loadUnits(context)
-        val sceneCards = if (scenes.isEmpty()) {
-            """
-      - type: custom:mushroom-template-card
-        primary: Keine Szenen gespeichert
-        secondary: Bitte API Fetch ausfuehren
-        icon: mdi:cloud-download
-        icon_color: grey
-"""
-        } else scenes.joinToString("
-") { scene ->
-            val slug = scene.name.lowercase().replace(Regex("[^a-z0-9]+"), "_").trim('_').ifBlank { "scene_${scene.id}" }
-            """
-      - type: custom:mushroom-template-card
-        entity: button.android_casambi_bridge_casambi_scene_$slug
-        primary: "${scene.name.replace(""", "'")}"
-        secondary: Szene ${scene.id}
-        icon: mdi:palette
-        icon_color: purple
-        layout: vertical
-        tap_action:
-          action: call-service
-          service: button.press
-          target:
-            entity_id: button.android_casambi_bridge_casambi_scene_$slug
-""".trimEnd()
+        val unitTitle = yamlText(units.firstOrNull()?.name ?: "Casambi Light 1")
+        val networkName = yamlText(config.casambiNetworkName.ifBlank { "Casambi Bridge" })
+        val groupInfo = yamlText(if (groups.isEmpty()) "Keine Gruppen gespeichert" else groups.joinToString { it.name })
+
+        val b = StringBuilder()
+        b.appendLine("type: vertical-stack")
+        b.appendLine("cards:")
+        b.appendLine("  - type: custom:mushroom-title-card")
+        b.appendLine("    title: \"Casambi Jungle\"")
+        b.appendLine("    subtitle: \"$networkName - powered by Sambesi\"")
+        b.appendLine("    alignment: center")
+        b.appendLine("")
+
+        b.appendSeparator("Bridge Diagnostics", "mdi:access-point-network")
+        b.appendLine("  - type: custom:mushroom-chips-card")
+        b.appendLine("    chips:")
+        b.appendChip("sensor.android_casambi_bridge_casambi_bridge_status")
+        b.appendChip("sensor.android_casambi_bridge_casambi_ble_status")
+        b.appendChip("binary_sensor.android_casambi_bridge_casambi_mqtt_connected")
+        b.appendChip("sensor.android_casambi_bridge_casambi_bridge_uptime")
+        b.appendChip("sensor.android_casambi_bridge_casambi_scene_count")
+        b.appendChip("sensor.android_casambi_bridge_casambi_group_count")
+        b.appendLine("")
+
+        b.appendSeparator("Light Control", "mdi:lightbulb")
+        b.appendLine("  - type: custom:mushroom-light-card")
+        b.appendLine("    entity: light.android_casambi_bridge_casambi_light_1")
+        b.appendLine("    name: \"$unitTitle\"")
+        b.appendLine("    icon: mdi:ceiling-light")
+        b.appendLine("    show_brightness_control: true")
+        b.appendLine("    show_color_temp_control: false")
+        b.appendLine("    show_color_control: false")
+        b.appendLine("    use_light_color: false")
+        b.appendLine("    collapsible_controls: false")
+        b.appendLine("")
+
+        b.appendLine("  - type: grid")
+        b.appendLine("    columns: 3")
+        b.appendLine("    square: false")
+        b.appendLine("    cards:")
+        b.appendServiceButton("ON", "Licht ein", "mdi:power", "green", "light.turn_on", "light.android_casambi_bridge_casambi_light_1")
+        b.appendServiceButton("OFF", "Licht aus", "mdi:power", "red", "light.turn_off", "light.android_casambi_bridge_casambi_light_1")
+        b.appendLight40Button()
+        b.appendLine("")
+
+        b.appendSeparator("Scenes", "mdi:palette")
+        b.appendLine("  - type: grid")
+        b.appendLine("    columns: 2")
+        b.appendLine("    square: false")
+        b.appendLine("    cards:")
+        if (scenes.isEmpty()) {
+            b.appendLine("      - type: custom:mushroom-template-card")
+            b.appendLine("        primary: \"Keine Szenen gespeichert\"")
+            b.appendLine("        secondary: \"Bitte API Fetch ausfuehren\"")
+            b.appendLine("        icon: mdi:cloud-download")
+            b.appendLine("        icon_color: grey")
+            b.appendLine("        layout: vertical")
+        } else {
+            scenes.forEach { scene ->
+                val slug = slug(scene.name, "scene_${scene.id}")
+                b.appendButtonPress("Casambi Scene ${yamlText(scene.name)}", "Szene ${scene.id}", "mdi:palette", "purple", "button.android_casambi_bridge_casambi_scene_$slug")
+            }
         }
-        val unitTitle = units.firstOrNull()?.name ?: "Casambi Light 1"
-        val groupInfo = if (groups.isEmpty()) "Keine Gruppen gespeichert" else groups.joinToString { it.name }
-        return """
-type: vertical-stack
-cards:
-  - type: custom:mushroom-title-card
-    title: "🌴 Casambi Jungle"
-    subtitle: "${config.casambiNetworkName.ifBlank { "Casambi Bridge" }} · powered by Sambesi"
-    alignment: center
+        b.appendLine("")
 
-  - type: custom:bubble-card
-    card_type: separator
-    name: Bridge Diagnostics
-    icon: mdi:access-point-network
+        b.appendSeparator("Bridge Settings", "mdi:tune")
+        b.appendLine("  - type: grid")
+        b.appendLine("    columns: 2")
+        b.appendLine("    square: false")
+        b.appendLine("    cards:")
+        b.appendEntitySwitch("switch.android_casambi_bridge_casambi_web_interface", "Web Interface", "mdi:web")
+        b.appendEntitySwitch("switch.android_casambi_bridge_casambi_smb_logging", "SMB Logging", "mdi:nas")
+        b.appendEntitySwitch("switch.android_casambi_bridge_casambi_tcp_logstream", "TCP Logstream", "mdi:console-network")
+        b.appendEntitySwitch("switch.android_casambi_bridge_casambi_auto_api_fetch", "Auto API Fetch", "mdi:cloud-sync")
+        b.appendLine("")
 
-  - type: custom:mushroom-chips-card
-    chips:
-      - type: entity
-        entity: sensor.android_casambi_bridge_casambi_bridge_status
-      - type: entity
-        entity: sensor.android_casambi_bridge_casambi_ble_status
-      - type: entity
-        entity: binary_sensor.android_casambi_bridge_casambi_mqtt_connected
-      - type: entity
-        entity: sensor.android_casambi_bridge_casambi_bridge_uptime
-      - type: entity
-        entity: sensor.android_casambi_bridge_casambi_scene_count
-      - type: entity
-        entity: sensor.android_casambi_bridge_casambi_group_count
+        b.appendSeparator("Bridge Controls", "mdi:tools")
+        b.appendLine("  - type: grid")
+        b.appendLine("    columns: 2")
+        b.appendLine("    square: false")
+        b.appendLine("    cards:")
+        b.appendButtonPress("API Fetch", "Key und Szenen aktualisieren", "mdi:cloud-download", "cyan", "button.android_casambi_bridge_casambi_api_fetch")
+        b.appendButtonPress("Restart Bridge", "Dienst neu starten", "mdi:restart", "orange", "button.android_casambi_bridge_casambi_restart_bridge")
+        b.appendLine("")
 
-  - type: grid
-    columns: 3
-    square: false
-    cards:
-      - type: custom:mushroom-template-card
-        primary: Bridge
-        secondary: "{{ states('sensor.android_casambi_bridge_casambi_bridge_status') }}"
-        icon: mdi:bridge
-        icon_color: >
-          {% if is_state('sensor.android_casambi_bridge_casambi_bridge_status', 'online') %} green {% else %} red {% endif %}
-        layout: vertical
-      - type: custom:mushroom-template-card
-        primary: BLE
-        secondary: "{{ states('sensor.android_casambi_bridge_casambi_ble_status') }}"
-        icon: mdi:bluetooth
-        icon_color: >
-          {% if is_state('sensor.android_casambi_bridge_casambi_ble_status', 'connected') %} blue {% else %} grey {% endif %}
-        layout: vertical
-      - type: custom:mushroom-template-card
-        primary: Unit 1
-        secondary: >
-          {% if is_state('binary_sensor.android_casambi_bridge_casambi_unit_1_online', 'on') %} Online {% else %} Offline {% endif %}
-        icon: mdi:lightbulb-on-outline
-        icon_color: >
-          {% if is_state('binary_sensor.android_casambi_bridge_casambi_unit_1_online', 'on') %} green {% else %} grey {% endif %}
-        layout: vertical
-
-  - type: custom:bubble-card
-    card_type: separator
-    name: Light Control
-    icon: mdi:lightbulb
-
-  - type: custom:mushroom-light-card
-    entity: light.android_casambi_bridge_casambi_light_1
-    name: "💡 $unitTitle"
-    icon: mdi:ceiling-light
-    show_brightness_control: true
-    show_color_temp_control: false
-    show_color_control: false
-    use_light_color: false
-    collapsible_controls: false
-
-  - type: grid
-    columns: 3
-    square: false
-    cards:
-      - type: custom:mushroom-template-card
-        primary: "ON"
-        secondary: Licht ein
-        icon: mdi:power
-        icon_color: green
-        layout: vertical
-        tap_action:
-          action: call-service
-          service: light.turn_on
-          target:
-            entity_id: light.android_casambi_bridge_casambi_light_1
-      - type: custom:mushroom-template-card
-        primary: "OFF"
-        secondary: Licht aus
-        icon: mdi:power
-        icon_color: red
-        layout: vertical
-        tap_action:
-          action: call-service
-          service: light.turn_off
-          target:
-            entity_id: light.android_casambi_bridge_casambi_light_1
-      - type: custom:mushroom-template-card
-        primary: "40%"
-        secondary: Soft Light
-        icon: mdi:brightness-5
-        icon_color: amber
-        layout: vertical
-        tap_action:
-          action: call-service
-          service: light.turn_on
-          target:
-            entity_id: light.android_casambi_bridge_casambi_light_1
-          data:
-            brightness_pct: 40
-
-  - type: custom:bubble-card
-    card_type: separator
-    name: Scenes
-    icon: mdi:palette
-
-  - type: grid
-    columns: 2
-    square: false
-    cards:
-$sceneCards
-
-  - type: custom:bubble-card
-    card_type: separator
-    name: Bridge Settings
-    icon: mdi:tune
-
-  - type: grid
-    columns: 2
-    square: false
-    cards:
-      - type: custom:mushroom-entity-card
-        entity: switch.android_casambi_bridge_casambi_web_interface
-        name: Web Interface
-        icon: mdi:web
-        tap_action:
-          action: toggle
-      - type: custom:mushroom-entity-card
-        entity: switch.android_casambi_bridge_casambi_smb_logging
-        name: SMB Logging
-        icon: mdi:nas
-        tap_action:
-          action: toggle
-      - type: custom:mushroom-entity-card
-        entity: switch.android_casambi_bridge_casambi_tcp_logstream
-        name: TCP Logstream
-        icon: mdi:console-network
-        tap_action:
-          action: toggle
-      - type: custom:mushroom-entity-card
-        entity: switch.android_casambi_bridge_casambi_auto_api_fetch
-        name: Auto API Fetch
-        icon: mdi:cloud-sync
-        tap_action:
-          action: toggle
-
-  - type: custom:bubble-card
-    card_type: separator
-    name: Bridge Controls
-    icon: mdi:tools
-
-  - type: grid
-    columns: 2
-    square: false
-    cards:
-      - type: custom:mushroom-template-card
-        entity: button.android_casambi_bridge_casambi_api_fetch
-        primary: API Fetch
-        secondary: Key/Szenen aktualisieren
-        icon: mdi:cloud-download
-        icon_color: cyan
-        layout: vertical
-        tap_action:
-          action: call-service
-          service: button.press
-          target:
-            entity_id: button.android_casambi_bridge_casambi_api_fetch
-      - type: custom:mushroom-template-card
-        entity: button.android_casambi_bridge_casambi_restart_bridge
-        primary: Restart Bridge
-        secondary: Dienst neu starten
-        icon: mdi:restart
-        icon_color: orange
-        layout: vertical
-        tap_action:
-          action: call-service
-          service: button.press
-          target:
-            entity_id: button.android_casambi_bridge_casambi_restart_bridge
-
-  - type: markdown
-    content: |
-      **Casambi Gruppen:** $groupInfo
-      
-      Dashboard automatisch erzeugt durch Casambi Bridge v0.5.0.
-""".trimIndent()
+        b.appendLine("  - type: markdown")
+        b.appendLine("    content: |")
+        b.appendLine("      **Casambi Gruppen:** $groupInfo")
+        b.appendLine("      ")
+        b.appendLine("      Dashboard automatisch erzeugt durch Casambi Bridge v0.5.1.")
+        return b.toString()
     }
+
+    private fun StringBuilder.appendSeparator(name: String, icon: String) {
+        appendLine("  - type: custom:bubble-card")
+        appendLine("    card_type: separator")
+        appendLine("    name: \"${yamlText(name)}\"")
+        appendLine("    icon: $icon")
+        appendLine("")
+    }
+
+    private fun StringBuilder.appendChip(entityId: String) {
+        appendLine("      - type: entity")
+        appendLine("        entity: $entityId")
+    }
+
+    private fun StringBuilder.appendServiceButton(primary: String, secondary: String, icon: String, color: String, service: String, entityId: String) {
+        appendLine("      - type: custom:mushroom-template-card")
+        appendLine("        primary: \"${yamlText(primary)}\"")
+        appendLine("        secondary: \"${yamlText(secondary)}\"")
+        appendLine("        icon: $icon")
+        appendLine("        icon_color: $color")
+        appendLine("        layout: vertical")
+        appendLine("        tap_action:")
+        appendLine("          action: call-service")
+        appendLine("          service: $service")
+        appendLine("          target:")
+        appendLine("            entity_id: $entityId")
+    }
+
+    private fun StringBuilder.appendLight40Button() {
+        appendLine("      - type: custom:mushroom-template-card")
+        appendLine("        primary: \"40%\"")
+        appendLine("        secondary: \"Soft Light\"")
+        appendLine("        icon: mdi:brightness-5")
+        appendLine("        icon_color: amber")
+        appendLine("        layout: vertical")
+        appendLine("        tap_action:")
+        appendLine("          action: call-service")
+        appendLine("          service: light.turn_on")
+        appendLine("          target:")
+        appendLine("            entity_id: light.android_casambi_bridge_casambi_light_1")
+        appendLine("          data:")
+        appendLine("            brightness_pct: 40")
+    }
+
+    private fun StringBuilder.appendButtonPress(primary: String, secondary: String, icon: String, color: String, entityId: String) {
+        appendLine("      - type: custom:mushroom-template-card")
+        appendLine("        entity: $entityId")
+        appendLine("        primary: \"${yamlText(primary)}\"")
+        appendLine("        secondary: \"${yamlText(secondary)}\"")
+        appendLine("        icon: $icon")
+        appendLine("        icon_color: $color")
+        appendLine("        layout: vertical")
+        appendLine("        tap_action:")
+        appendLine("          action: call-service")
+        appendLine("          service: button.press")
+        appendLine("          target:")
+        appendLine("            entity_id: $entityId")
+    }
+
+    private fun StringBuilder.appendEntitySwitch(entityId: String, name: String, icon: String) {
+        appendLine("      - type: custom:mushroom-entity-card")
+        appendLine("        entity: $entityId")
+        appendLine("        name: \"${yamlText(name)}\"")
+        appendLine("        icon: $icon")
+        appendLine("        tap_action:")
+        appendLine("          action: toggle")
+    }
+
+    private fun slug(value: String, fallback: String): String {
+        val s = value.lowercase().replace(Regex("[^a-z0-9]+"), "_").trim('_')
+        return s.ifBlank { fallback }
+    }
+
+    private fun yamlText(value: String): String = value.replace("\\", "\\\\").replace("\"", "'")
 }
