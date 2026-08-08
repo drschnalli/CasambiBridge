@@ -104,8 +104,10 @@ class CasambiBridgeService : Service() {
             it.publishDiscoveryForScenes(SceneStore.loadScenes(this))
             it.publishDiscoveryForStatusEntities()
             it.publishDiscoveryForBridgeSettings()
-            // v0.5.6: diagnostics discovery/state publishing remains disabled at startup to prevent MQTT publish storms.
+            // v0.5.7: diagnostics discovery/state publishing remains disabled at startup to prevent MQTT publish storms.
+            it.publishHacsDiscovery(config)
             it.publishBridgeSettingsState(config)
+            it.publishHacsDiagnostics(config)
             it.publishBridgeStatus("online", "connecting")
             it.publishState("OFF", 0)
         }
@@ -161,6 +163,7 @@ class CasambiBridgeService : Service() {
             93 -> current.copy(smbDebugEnabled = enabled)
             94 -> current.copy(tcpLogEnabled = enabled)
             95 -> current.copy(autoApiFetchEnabled = enabled)
+            96 -> current.copy(webSocketLiveEnabled = enabled)
             else -> current
         }
         ConfigStore.save(this, updated)
@@ -168,11 +171,14 @@ class CasambiBridgeService : Service() {
         TcpLogServer.configure(updated)
         WebControlServer.configure(this, updated)
         mqtt?.publishBridgeSettingsState(updated)
+        mqtt?.publishHacsDiscovery(updated)
+        mqtt?.publishHacsDiagnostics(updated)
         val label = when (command.targetType) {
             92 -> "Web Interface"
             93 -> "SMB Logging"
             94 -> "TCP Logstream"
             95 -> "Auto API Fetch"
+            96 -> "WebSocket Live Updates"
             else -> "Setting"
         }
         LogBus.log("HA Settings: $label ${if (enabled) "ON" else "OFF"}")
@@ -195,7 +201,7 @@ class CasambiBridgeService : Service() {
                 LogBus.log("HA Button: Bridge Restart")
                 startBridge(forceRestart = true)
             }
-            92, 93, 94, 95 -> updateBridgeSetting(command)
+            92, 93, 94, 95, 96 -> updateBridgeSetting(command)
             else -> submitOrQueue(command)
         }
     }
@@ -205,6 +211,7 @@ class CasambiBridgeService : Service() {
         val brightness = if (intent.hasExtra(EXTRA_BRIGHTNESS)) intent.getIntExtra(EXTRA_BRIGHTNESS, -1).takeIf { it >= 0 } else null
         val command = CasambiCommand(1, state, brightness)
         RuntimeStatus.clearScene()
+        mqtt?.publishActiveScene()
         LogBus.log("App Control Command Unit 1 state=${state ?: "-"} brightness=${brightness ?: -1} effective=${command.effectiveBrightness}")
         submitOrQueue(command)
     }
@@ -218,6 +225,7 @@ class CasambiBridgeService : Service() {
         }
         val command = CasambiCommand(sceneId, "ON", 255, 4, sceneName)
         RuntimeStatus.markScene(sceneId, sceneName)
+        mqtt?.publishActiveScene()
         LogBus.log("Scene Command scene=$sceneId name=$sceneName effective=${command.effectiveBrightness}")
         submitOrQueue(command)
     }
@@ -254,6 +262,7 @@ class CasambiBridgeService : Service() {
             if (withMqtt) {
                 mqtt?.publishAvailability(true)
                 mqtt?.publishBridgeStatus("online", "connected")
+                mqtt?.publishHacsDiagnostics(config)
             }
         }
         override fun onDisconnected() {
@@ -263,6 +272,7 @@ class CasambiBridgeService : Service() {
             updateNotification("BLE getrennt")
             if (withMqtt) {
                 mqtt?.publishBridgeStatus("online", "disconnected")
+                mqtt?.publishHacsDiagnostics(config)
                 handler.postDelayed({ if (generation == startGeneration) ble?.connect() }, 5000)
             }
         }

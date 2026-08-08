@@ -160,7 +160,7 @@ object WebControlServer {
         .put("brightnessPct", ((RuntimeStatus.lastBrightness.coerceIn(0,255) * 100) / 255))
         .put("lastSyncText", if (RuntimeStatus.lastSyncMillis > 0L) ageText(RuntimeStatus.lastSyncMillis) else "not synced")
         .put("lastUpdateText", if (RuntimeStatus.lastUpdateMillis > 0L) ageText(RuntimeStatus.lastUpdateMillis) else "never")
-        .put("version", "0.5.6")
+        .put("version", "0.5.7")
         .toString()
 
     private fun fetchApiNow(): String {
@@ -259,7 +259,7 @@ object WebControlServer {
         return page("Casambi Jungle", """
 <div class='hero'>
   <h1>CASAMBI JUNGLE</h1>
-  <div class='sub'>${esc(c.casambiNetworkName.ifBlank { "Bridge Control Center" })} - powered by Sambesi - v0.5.6</div>
+  <div class='sub'>${esc(c.casambiNetworkName.ifBlank { "Bridge Control Center" })} - powered by Sambesi - v0.5.7</div>
   <div class='msg'>${esc(message)}</div>
 </div>
 <div class='grid'>
