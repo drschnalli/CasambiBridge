@@ -152,6 +152,7 @@ object WebControlServer {
             "/status" -> "application/json; charset=utf-8" to statusJson()
             "/logs" -> "text/html; charset=utf-8" to logsPage()
             "/logs.txt" -> "text/plain; charset=utf-8" to LogBus.recentLines(180).joinToString("\n")
+            "/scan-tools" -> "text/html; charset=utf-8" to scanToolsPage()
             "/files" -> "text/html; charset=utf-8" to filesPage()
             "/file" -> fileResponse(params["name"] ?: "")
             "/toggle-ws" -> {
