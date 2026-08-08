@@ -108,7 +108,7 @@ class MainActivity : AppCompatActivity() {
 
         val headerRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         headerRow.addView(TextView(this).apply {
-            text = "🌴 CASAMBI JUNGLE // v0.6.1"
+            text = "🌴 CASAMBI JUNGLE // v0.7.0"
             textSize = 21f
             setTextColor(leaf)
             setTypeface(Typeface.MONOSPACE, Typeface.BOLD)

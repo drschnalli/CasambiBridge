@@ -110,10 +110,11 @@ class CasambiBridgeService : Service() {
             it.publishDiscoveryForScenes(scenes)
             it.publishDiscoveryForStatusEntities()
             it.publishDiscoveryForBridgeSettings()
-            // v0.6.1: diagnostics discovery/state publishing remains disabled at startup to prevent MQTT publish storms.
+            // v0.7.0: diagnostics discovery/state publishing remains disabled at startup to prevent MQTT publish storms.
             it.publishHacsDiscovery(config, units, scenes)
             it.publishBridgeSettingsState(config)
             it.publishScenesList(scenes)
+            it.publishUnitsList(units)
             it.publishHacsDiagnostics(config)
             it.publishActiveScene(scenes)
             it.publishBridgeStatus("online", "connecting")
@@ -217,7 +218,7 @@ class CasambiBridgeService : Service() {
                     RuntimeStatus.markScene(command.unitId, sceneName)
                     mqtt?.publishActiveScene(scenes)
                 } else {
-                    // v0.6.1: Any manual unit/group/light command coming from MQTT means the previous scene
+                    // v0.7.0: Any manual unit/group/light command coming from MQTT means the previous scene
                     // is no longer guaranteed to be active. Keep Android UI, Web UI, MQTT and HACS in sync.
                     if (RuntimeStatus.lastSceneId >= 0 || RuntimeStatus.lastSceneName.isNotBlank()) {
                         RuntimeStatus.clearScene()
@@ -237,10 +238,11 @@ class CasambiBridgeService : Service() {
     private fun handleCommand(intent: Intent) {
         val state = intent.getStringExtra(EXTRA_STATE)
         val brightness = if (intent.hasExtra(EXTRA_BRIGHTNESS)) intent.getIntExtra(EXTRA_BRIGHTNESS, -1).takeIf { it >= 0 } else null
-        val command = CasambiCommand(1, state, brightness)
+        val unitId = intent.getIntExtra("unit_id", 1)
+        val command = CasambiCommand(unitId, state, brightness)
         RuntimeStatus.clearScene()
         mqtt?.publishActiveScene(SceneStore.loadScenes(this))
-        LogBus.log("App Control Command Unit 1 state=${state ?: "-"} brightness=${brightness ?: -1} effective=${command.effectiveBrightness}")
+        LogBus.log("App Control Command Unit ${command.unitId} state=${state ?: "-"} brightness=${brightness ?: -1} effective=${command.effectiveBrightness}")
         submitOrQueue(command)
     }
 

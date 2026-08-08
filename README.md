@@ -1,8 +1,8 @@
-# Casambi Bridge v0.6.1
+# Casambi Bridge v0.7.0
 
-v0.6.1 ist der erste grosse Schritt Richtung Discovery 2.0, Diagnose-Dashboard und spaeterer HACS-Faehigkeit.
+v0.7.0 ist der erste grosse Schritt Richtung Discovery 2.0, Diagnose-Dashboard und spaeterer HACS-Faehigkeit.
 
-## Neu in v0.6.1
+## Neu in v0.7.0
 
 ### Diagnostics & Discovery 2.0
 

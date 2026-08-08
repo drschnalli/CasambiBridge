@@ -28,15 +28,16 @@ object WebControlServer {
     fun configure(context: Context, config: BridgeConfig) {
         synchronized(lock) {
             appContext = context.applicationContext
-            if (!config.webInterfaceEnabled) { stopLocked(true); return }
+            if (!config.webInterfaceEnabled) { NsdDiscoveryAdvertiser.stop(); stopLocked(true); return }
             val port = config.webInterfacePort.coerceIn(1024, 65535)
-            if (serverSocket != null && runningPort == port) { LogBus.log("Webinterface laeuft bereits auf Port $port"); return }
+            if (serverSocket != null && runningPort == port) { NsdDiscoveryAdvertiser.configure(context, config); LogBus.log("Webinterface laeuft bereits auf Port $port"); return }
             stopLocked(false)
             startLocked(port)
+            NsdDiscoveryAdvertiser.configure(context, config)
         }
     }
 
-    fun stop() { synchronized(lock) { stopLocked(true) } }
+    fun stop() { synchronized(lock) { NsdDiscoveryAdvertiser.stop(); stopLocked(true) } }
 
     private fun startLocked(port: Int) {
         thread(name = "casambi-web-control", isDaemon = true) {
@@ -94,6 +95,23 @@ object WebControlServer {
         val parts = path.split("?", limit = 2)
         val route = parts[0]
         val params = if (parts.size > 1) parseQuery(parts[1]) else emptyMap()
+        if (route == "/api/info") return "application/json; charset=utf-8" to apiInfoJson()
+        if (route == "/api/status") return "application/json; charset=utf-8" to statusJson()
+        if (route == "/api/units") return "application/json; charset=utf-8" to apiUnitsJson()
+        if (route == "/api/scenes") return "application/json; charset=utf-8" to apiScenesJson()
+        if (route.startsWith("/api/light/")) {
+            val id = route.removePrefix("/api/light/").trim('/').toIntOrNull() ?: 1
+            val state = params["state"] ?: params["power"] ?: "ON"
+            val brightness = params["brightness"]?.toIntOrNull()
+            sendCommandToUnit(id, state, brightness)
+            return "application/json; charset=utf-8" to JSONObject().put("ok", true).put("unit_id", id).put("state", state).put("brightness", brightness ?: JSONObject.NULL).toString()
+        }
+        if (route.startsWith("/api/scene/")) {
+            val id = route.removePrefix("/api/scene/").trim('/').toIntOrNull() ?: -1
+            val scene = appContext?.let { ctx -> SceneStore.loadScenes(ctx).firstOrNull { it.id == id } }
+            if (id >= 0) sendScene(id, scene?.name ?: "Scene $id")
+            return "application/json; charset=utf-8" to JSONObject().put("ok", id >= 0).put("scene_id", id).put("scene_name", scene?.name ?: "Scene $id").toString()
+        }
         return when (route) {
             "/", "/index.html" -> "text/html; charset=utf-8" to dashboard("Bereit")
             "/command" -> {
@@ -147,6 +165,51 @@ object WebControlServer {
         val ctx = appContext ?: return "Casambi Light 1"
         return SceneStore.loadUnits(ctx).firstOrNull()?.name ?: "Casambi Light 1"
     }
+    private fun apiInfoJson(): String {
+        val ctx = appContext
+        val c = if (ctx != null) ConfigStore.load(ctx) else BridgeConfig()
+        val webUrl = localWebUrl(c)
+        return JSONObject()
+            .put("name", c.casambiNetworkName.ifBlank { "Casambi Jungle Bridge" })
+            .put("version", "0.7.0")
+            .put("mode", "hybrid")
+            .put("mqtt_enabled", c.mqttHost.isNotBlank())
+            .put("base_topic", c.baseTopic)
+            .put("web_url", webUrl)
+            .put("api", "/api/info")
+            .put("status", "/api/status")
+            .put("ws", "/ws")
+            .put("auth", "none")
+            .put("units", JSONObject(apiUnitsJson()).optJSONArray("units"))
+            .put("scenes", JSONObject(apiScenesJson()).optJSONArray("scenes"))
+            .toString()
+    }
+    private fun apiUnitsJson(): String {
+        val ctx = appContext
+        val arr = org.json.JSONArray()
+        if (ctx != null) SceneStore.loadUnits(ctx).forEach { unit ->
+            arr.put(JSONObject().put("id", unit.id).put("name", unit.name))
+        }
+        return JSONObject().put("units", arr).toString()
+    }
+    private fun apiScenesJson(): String {
+        val ctx = appContext
+        val arr = org.json.JSONArray()
+        if (ctx != null) SceneStore.loadScenes(ctx).forEach { scene ->
+            arr.put(JSONObject().put("id", scene.id).put("name", scene.name))
+        }
+        return JSONObject().put("scenes", arr).toString()
+    }
+    private fun localWebUrl(c: BridgeConfig): String {
+        val ip = runCatching {
+            java.net.NetworkInterface.getNetworkInterfaces().toList()
+                .flatMap { it.inetAddresses.toList() }
+                .filterIsInstance<java.net.Inet4Address>()
+                .firstOrNull { !it.isLoopbackAddress && !it.hostAddress.startsWith("169.254") }
+                ?.hostAddress
+        }.getOrNull() ?: ""
+        return if (ip.isBlank()) "" else "http://$ip:${c.webInterfacePort.coerceIn(1024, 65535)}"
+    }
 
     private fun statusJson(): String = JSONObject()
         .put("state", RuntimeStatus.lastState)
@@ -166,7 +229,7 @@ object WebControlServer {
         .put("brightnessPct", ((RuntimeStatus.lastBrightness.coerceIn(0,255) * 100) / 255))
         .put("lastSyncText", if (RuntimeStatus.lastSyncMillis > 0L) ageText(RuntimeStatus.lastSyncMillis) else "not synced")
         .put("lastUpdateText", if (RuntimeStatus.lastUpdateMillis > 0L) ageText(RuntimeStatus.lastUpdateMillis) else "never")
-        .put("version", "0.6.1")
+        .put("version", "0.7.0")
         .toString()
 
     private fun fetchApiNow(): String {
@@ -197,10 +260,14 @@ object WebControlServer {
     }
 
     private fun sendCommand(state: String, brightness: Int?) {
+        sendCommandToUnit(1, state, brightness)
+    }
+    private fun sendCommandToUnit(unitId: Int, state: String, brightness: Int?) {
         val ctx = appContext ?: return
         ctx.startService(Intent(ctx, CasambiBridgeService::class.java).apply {
             action = ACTION_COMMAND
             putExtra(EXTRA_STATE, state)
+            putExtra("unit_id", unitId)
             if (brightness != null) putExtra(EXTRA_BRIGHTNESS, brightness)
         })
     }
@@ -266,7 +333,7 @@ object WebControlServer {
         return page("Casambi Jungle", """
 <div class='hero'>
   <h1>CASAMBI JUNGLE</h1>
-  <div class='sub'>${esc(c.casambiNetworkName.ifBlank { "Bridge Control Center" })} - powered by Sambesi - v0.6.1</div>
+  <div class='sub'>${esc(c.casambiNetworkName.ifBlank { "Bridge Control Center" })} - powered by Sambesi - v0.7.0</div>
   <div class='msg'>${esc(message)}</div>
 </div>
 <div class='grid'>
