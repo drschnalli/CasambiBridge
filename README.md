@@ -1,8 +1,8 @@
-# Casambi Bridge v0.9.2
+# Casambi Bridge v0.10.0
 
-v0.9.2 ist der erste grosse Schritt Richtung Discovery 2.0, Diagnose-Dashboard und spaeterer HACS-Faehigkeit.
+v0.10.0 ist der erste grosse Schritt Richtung Discovery 2.0, Diagnose-Dashboard und spaeterer HACS-Faehigkeit.
 
-## Neu in v0.9.2
+## Neu in v0.10.0
 
 ### Diagnostics & Discovery 2.0
 
@@ -104,3 +104,11 @@ gradle clean
 gradle assembleDebug
 adb install -r .\app\build\outputs\apk\debug\app-debug.apk
 ```
+
+
+## Neu in v0.10.0 Scanner Pro
+
+- History Pro: einzelne Eintraege loeschen, Copy, TXT Export, Schnellfilter, Karten-/Baumansicht und bessere Summary.
+- WiFi Pro: Channel Usage Chart, Access-Point/BSSID Gruppierung, Security Badges und Live-Karten.
+- Network Pro: Kandidaten-Badges fuer HTTP, MQTT, SMB und Home Assistant sowie Port-Badges.
+- BLE Pro: Casambi Watch Filter, Seen Count, Last Seen, Best Signal und Casambi-Kartenmarkierung.
