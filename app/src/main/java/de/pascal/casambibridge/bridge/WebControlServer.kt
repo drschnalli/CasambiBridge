@@ -157,6 +157,7 @@ object WebControlServer {
         if (route == "/tools") return "text/html; charset=utf-8" to toolsHomePage()
         if (route == "/lights") return "text/html; charset=utf-8" to dashboard("Bereit", "lights")
         if (route == "/settings") return "text/html; charset=utf-8" to settingsWebPage()
+        if (route == "/settings-save") return "text/html; charset=utf-8" to saveSettingsWeb(params)
         if (route == "/scan-network") return "text/html; charset=utf-8" to scanNetworkWeb(params)
         if (route == "/scan-wifi") return "text/html; charset=utf-8" to scanWifiWeb(params)
         if (route == "/scan-ble") return "text/html; charset=utf-8" to scanBleWeb(params)
@@ -231,7 +232,7 @@ object WebControlServer {
         val webUrl = localWebUrl(c)
         return JSONObject()
             .put("name", c.casambiNetworkName.ifBlank { "Casambi Jungle Bridge" })
-            .put("version", "0.8.3")
+            .put("version", "0.8.4")
             .put("mode", if (c.mqttEnabled && c.directModeEnabled) "hybrid" else if (c.directModeEnabled) "direct" else "mqtt")
             .put("mqtt_enabled", c.mqttEnabled && c.mqttHost.isNotBlank())
             .put("direct_enabled", c.directModeEnabled)
@@ -294,7 +295,7 @@ object WebControlServer {
         .put("brightnessPct", ((RuntimeStatus.lastBrightness.coerceIn(0,255) * 100) / 255))
         .put("lastSyncText", if (RuntimeStatus.lastSyncMillis > 0L) ageText(RuntimeStatus.lastSyncMillis) else "not synced")
         .put("lastUpdateText", if (RuntimeStatus.lastUpdateMillis > 0L) ageText(RuntimeStatus.lastUpdateMillis) else "never")
-        .put("version", "0.8.3")
+        .put("version", "0.8.4")
         .put("direct", appContext?.let { ConfigStore.load(it).directModeEnabled } ?: false)
         .put("mdns", appContext?.let { ConfigStore.load(it).networkDiscoveryEnabled } ?: false)
         .toString()
@@ -436,6 +437,32 @@ async function startWifiLive(){wifiStop=false;clearTerminal('wifiTerminal','wifi
     private fun arpMacForWeb(ip: String): String = runCatching {
         java.io.File("/proc/net/arp").readLines().drop(1).firstOrNull { line -> line.trim().split(Regex("\\s+")).firstOrNull() == ip }?.trim()?.split(Regex("\\s+"))?.getOrNull(3) ?: "-"
     }.getOrDefault("-")
+    private fun wifiSecurityLabel(caps: String): String {
+        val c = caps.uppercase()
+        return when {
+            c.contains("SAE") -> "WPA3"
+            c.contains("OWE") -> "WPA3/OWE"
+            c.contains("EAP") && c.contains("WPA2") -> "WPA2-Enterprise"
+            c.contains("EAP") -> "Enterprise"
+            c.contains("WPA2") || c.contains("RSN") -> "WPA2"
+            c.contains("WPA") -> "WPA"
+            c.contains("WEP") -> "WEP"
+            else -> "OPEN"
+        }
+    }
+    private fun wifiBand(freq: Int): String = when {
+        freq in 2400..2499 -> "2.4 GHz"
+        freq in 4900..5899 -> "5 GHz"
+        freq in 5925..7125 -> "6 GHz"
+        else -> "${freq} MHz"
+    }
+    @Suppress("DEPRECATION")
+    private fun wifiLine(r: android.net.wifi.ScanResult): String {
+        val ssid = (r.SSID ?: "").ifBlank { "<hidden>" }
+        val sec = wifiSecurityLabel(r.capabilities ?: "")
+        val band = wifiBand(r.frequency)
+        return "rssi=${r.level.toString().padStart(4)}  ssid=$ssid  sec=$sec  band=$band  freq=${r.frequency}  bssid=${r.BSSID}  caps=${r.capabilities}"
+    }
     private fun scanWifiLiveJson(params: Map<String,String>): String {
         val ctx = appContext ?: return JSONObject().put("rows", org.json.JSONArray()).put("error", "no context").toString()
         val filter = params["filter"]?.lowercase().orEmpty()
@@ -443,10 +470,10 @@ async function startWifiLive(){wifiStop=false;clearTerminal('wifiTerminal','wifi
         val startOk = runCatching { wifi.startScan() }.getOrDefault(false)
         Thread.sleep(350)
         val arr = org.json.JSONArray()
-        runCatching { wifi.scanResults }.getOrDefault(emptyList()).map { r ->
-            val ssid = (r.SSID ?: "").ifBlank { "<hidden>" }
-            "rssi=${r.level.toString().padStart(4)}  ssid=$ssid  bssid=${r.BSSID}  freq=${r.frequency}  caps=${r.capabilities}"
-        }.filter { filter.isBlank() || it.lowercase().contains(filter) }.sortedByDescending { it.substringAfter("rssi=").substringBefore(" ").trim().toIntOrNull() ?: -999 }.forEach { arr.put(it) }
+        runCatching { wifi.scanResults }.getOrDefault(emptyList()).map { r -> wifiLine(r) }
+            .filter { filter.isBlank() || it.lowercase().contains(filter) }
+            .sortedByDescending { it.substringAfter("rssi=").substringBefore(" ").trim().toIntOrNull() ?: -999 }
+            .forEach { arr.put(it) }
         return JSONObject().put("startOk", startOk).put("rows", arr).toString()
     }
     private fun scanBleLiveJson(params: Map<String,String>): String {
@@ -497,10 +524,9 @@ async function startWifiLive(){wifiStop=false;clearTerminal('wifiTerminal','wifi
         val wifi = ctx.applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager ?: return page("WiFi Scan", "WiFi Manager nicht verfuegbar")
         runCatching { wifi.startScan() }
         Thread.sleep(1800)
-        val rows = runCatching { wifi.scanResults }.getOrDefault(emptyList()).map { r ->
-            val ssid = (r.SSID ?: "").ifBlank { "<hidden>" }
-            "rssi=${r.level.toString().padStart(4)}  ssid=$ssid  bssid=${r.BSSID}  freq=${r.frequency}  caps=${r.capabilities}"
-        }.filter { filter.isBlank() || it.lowercase().contains(filter) }.sortedByDescending { it.substringAfter("rssi=").substringBefore(" ").trim().toIntOrNull() ?: -999 }
+        val rows = runCatching { wifi.scanResults }.getOrDefault(emptyList()).map { r -> wifiLine(r) }
+            .filter { filter.isBlank() || it.lowercase().contains(filter) }
+            .sortedByDescending { it.substringAfter("rssi=").substringBefore(" ").trim().toIntOrNull() ?: -999 }
         return page("WiFi Scan", "<section class='card wide'><h2>WiFi Scan</h2><pre>${esc(rows.joinToString("\n").ifBlank { "Keine Treffer. Android kann Web-/Background-WiFi-Scans blockieren." })}</pre><a class='btn ghost' href='/tools'>BACK</a></section>")
     }
     private fun scanBleWeb(params: Map<String,String>): String {
@@ -576,7 +602,7 @@ async function startWifiLive(){wifiStop=false;clearTerminal('wifiTerminal','wifi
         return page("Casambi Jungle", """
 <div class='hero'>
   <h1>CASAMBI JUNGLE</h1>
-  <div class='sub'>${esc(c.casambiNetworkName.ifBlank { "Bridge Control Center" })} - powered by Sambesi - v0.8.3</div>
+  <div class='sub'>${esc(c.casambiNetworkName.ifBlank { "Bridge Control Center" })} - powered by Sambesi - v0.8.4</div>
   <div class='msg'>${esc(message)}</div>
 </div>
 <div class='grid'>
@@ -595,21 +621,84 @@ async function startWifiLive(){wifiStop=false;clearTerminal('wifiTerminal','wifi
 <section class='card wide'><h2>Bluetooth Scanner</h2><form class='toolForm' action='/scan-ble'><label>Filter Name/MAC</label><input name='filter'><button class='btn'>SCAN BLE</button></form></section>
 """)
     private fun scanToolsPage(): String = toolsHomePage()
+    private fun checked(value: Boolean): String = if (value) " checked" else ""
     private fun settingsWebPage(): String {
         val ctx = appContext ?: return page("Settings", "No context")
         val c = ConfigStore.load(ctx)
         return page("Settings", """
-<section class='card wide'><h2>Bridge Settings</h2><pre>MQTT=${c.mqttEnabled}
-Direct=${c.directModeEnabled}
-Web=${c.webInterfaceEnabled}
-SMB=${c.smbDebugEnabled}
-TCP=${c.tcpLogEnabled}
-WebSocket=${c.webSocketLiveEnabled}
-Network Discovery=${c.networkDiscoveryEnabled}
-Auto Start=${c.autoStartEnabled}
-Base Topic=${esc(c.baseTopic)}
-Web Port=${c.webInterfacePort}</pre></section>
+<section class='hero card wide glassHero'><h1>Settings</h1><p class='muted'>Bridge-Einstellungen direkt im Webinterface bearbeiten. Schalter speichern mit SAVE SETTINGS.</p></section>
+<section class='card wide settingsGrid'>
+<form class='settingsForm' action='/settings-save'>
+  <h2>Bridge Toggles</h2>
+  <label class='switchLine'><span>MQTT Mode</span><input type='checkbox' name='mqttEnabled'${checked(c.mqttEnabled)}><b></b></label>
+  <label class='switchLine'><span>Direct Mode</span><input type='checkbox' name='directModeEnabled'${checked(c.directModeEnabled)}><b></b></label>
+  <label class='switchLine'><span>Web Interface</span><input type='checkbox' name='webInterfaceEnabled'${checked(c.webInterfaceEnabled)}><b></b></label>
+  <label class='switchLine'><span>SMB Logging</span><input type='checkbox' name='smbDebugEnabled'${checked(c.smbDebugEnabled)}><b></b></label>
+  <label class='switchLine'><span>TCP Logstream</span><input type='checkbox' name='tcpLogEnabled'${checked(c.tcpLogEnabled)}><b></b></label>
+  <label class='switchLine'><span>WebSocket Live</span><input type='checkbox' name='webSocketLiveEnabled'${checked(c.webSocketLiveEnabled)}><b></b></label>
+  <label class='switchLine'><span>Network Discovery / mDNS</span><input type='checkbox' name='networkDiscoveryEnabled'${checked(c.networkDiscoveryEnabled)}><b></b></label>
+  <label class='switchLine'><span>Auto API Fetch</span><input type='checkbox' name='autoApiFetchEnabled'${checked(c.autoApiFetchEnabled)}><b></b></label>
+  <label class='switchLine'><span>Autostart Bridge</span><input type='checkbox' name='autoStartEnabled'${checked(c.autoStartEnabled)}><b></b></label>
+  <h2>MQTT</h2>
+  <label>MQTT Host</label><input name='mqttHost' value='${esc(c.mqttHost)}'>
+  <label>MQTT Port</label><input name='mqttPort' value='${c.mqttPort}'>
+  <label>MQTT User</label><input name='mqttUser' value='${esc(c.mqttUser)}'>
+  <label>MQTT Password</label><input name='mqttPassword' value='${esc(c.mqttPassword)}' type='password'>
+  <label>Base Topic</label><input name='baseTopic' value='${esc(c.baseTopic)}'>
+  <label>Discovery Prefix</label><input name='discoveryPrefix' value='${esc(c.discoveryPrefix)}'>
+  <h2>Web / Logs</h2>
+  <label>Web Port</label><input name='webInterfacePort' value='${c.webInterfacePort}'>
+  <label>TCP Log Port</label><input name='tcpLogPort' value='${c.tcpLogPort}'>
+  <h2>SMB</h2>
+  <label>SMB Server</label><input name='smbServer' value='${esc(c.smbServer)}'>
+  <label>SMB Share</label><input name='smbShare' value='${esc(c.smbShare)}'>
+  <label>SMB Path</label><input name='smbPath' value='${esc(c.smbPath)}'>
+  <label>SMB Domain</label><input name='smbDomain' value='${esc(c.smbDomain)}'>
+  <label>SMB User</label><input name='smbUser' value='${esc(c.smbUser)}'>
+  <label>SMB Password</label><input name='smbPassword' value='${esc(c.smbPassword)}' type='password'>
+  <button class='btn saveBtn'>SAVE SETTINGS</button>
+</form>
+</section>
 """)
+    }
+    private fun saveSettingsWeb(params: Map<String,String>): String {
+        val ctx = appContext ?: return page("Settings", "No context")
+        val c = ConfigStore.load(ctx)
+        fun enabled(name: String) = params.containsKey(name)
+        fun str(name: String, old: String) = params[name] ?: old
+        fun int(name: String, old: Int) = params[name]?.toIntOrNull() ?: old
+        val updated = c.copy(
+            mqttEnabled = enabled("mqttEnabled"),
+            directModeEnabled = enabled("directModeEnabled"),
+            webInterfaceEnabled = enabled("webInterfaceEnabled"),
+            smbDebugEnabled = enabled("smbDebugEnabled"),
+            tcpLogEnabled = enabled("tcpLogEnabled"),
+            webSocketLiveEnabled = enabled("webSocketLiveEnabled"),
+            networkDiscoveryEnabled = enabled("networkDiscoveryEnabled"),
+            autoApiFetchEnabled = enabled("autoApiFetchEnabled"),
+            autoStartEnabled = enabled("autoStartEnabled"),
+            mqttHost = str("mqttHost", c.mqttHost).trim(),
+            mqttPort = int("mqttPort", c.mqttPort).coerceIn(1, 65535),
+            mqttUser = str("mqttUser", c.mqttUser),
+            mqttPassword = str("mqttPassword", c.mqttPassword),
+            baseTopic = str("baseTopic", c.baseTopic).ifBlank { "casambi_bridge" },
+            discoveryPrefix = str("discoveryPrefix", c.discoveryPrefix).ifBlank { "homeassistant" },
+            webInterfacePort = int("webInterfacePort", c.webInterfacePort).coerceIn(1024, 65535),
+            tcpLogPort = int("tcpLogPort", c.tcpLogPort).coerceIn(1024, 65535),
+            smbServer = str("smbServer", c.smbServer).trim(),
+            smbShare = str("smbShare", c.smbShare).trim(),
+            smbPath = str("smbPath", c.smbPath).trim().ifBlank { "casambi_debug" },
+            smbDomain = str("smbDomain", c.smbDomain).trim(),
+            smbUser = str("smbUser", c.smbUser),
+            smbPassword = str("smbPassword", c.smbPassword)
+        )
+        ConfigStore.save(ctx, updated)
+        DebugExporter.configure(updated)
+        TcpLogServer.configure(updated)
+        WebControlServer.configure(ctx, updated)
+        ctx.startService(Intent(ctx, CasambiBridgeService::class.java).apply { action = CasambiBridgeService.ACTION_START })
+        LogBus.log("Web Settings gespeichert")
+        return page("Settings saved", "<section class='card wide glassHero'><h1>Settings gespeichert</h1><p class='muted'>Bridge wurde mit aktualisierten Web-Einstellungen neu konfiguriert.</p><a class='btn' href='/settings'>BACK SETTINGS</a><a class='btn ghost' href='/'>DASHBOARD</a></section>")
     }
     private fun logsPage(): String = page("Live Log", """
 <div class='toolbar'><a class='btn ghost' href='/'>HOME</a><a class='btn ghost' href='/logs.txt'>RAW LOG</a></div>
@@ -621,8 +710,8 @@ Web Port=${c.webInterfacePort}</pre></section>
 <style>
 :root{--bg:#02100d;--panel:#06251eee;--line:#1ddca866;--leaf:#20e69a;--lime:#91f36d;--teal:#22b8a8;--amber:#ffcc66;--violet:#4d8dff;--danger:#ff4d7d;--text:#eafff4;--muted:#9bd7c0}
 *{box-sizing:border-box}body{margin:0;min-height:100vh;color:var(--text);font-family:Consolas,Monaco,monospace;background:radial-gradient(circle at 12% 0%,#0b3d34 0,#031a15 38%,#010705 100%);overflow-x:hidden}
-.wrap{max-width:none;margin:0;padding:18px 22px}.pinBtn{position:fixed;right:18px;top:18px;z-index:5;background:#063d32;color:var(--leaf);border:1px solid var(--line);border-radius:14px;padding:11px 14px;font-family:inherit;font-weight:900}.hamb{position:fixed;left:18px;top:18px;z-index:5;background:#063d32;border:1px solid var(--line);border-radius:14px;color:var(--leaf);padding:12px 16px;cursor:pointer;box-shadow:0 0 18px #20e69a44}.drawer{position:fixed;left:0;top:0;bottom:0;width:252px;z-index:4;background:linear-gradient(180deg,#06251e,#02100d);border-right:1px solid var(--line);padding:70px 16px 16px;transition:left .28s ease;box-shadow:0 0 40px #000}.drawer h2{color:var(--leaf)}.drawer a{display:block;margin:8px 0;padding:12px;border:1px solid var(--line);border-radius:14px;color:var(--leaf);text-decoration:none;background:#031c16;transition:transform .18s ease,background .18s ease}.drawer a:hover{background:#0a3e31;transform:translateX(5px)}.stage{margin-left:252px;transition:margin-left .28s ease,transform .28s ease}.unpinned .drawer{left:-272px}.unpinned .stage{margin-left:0}#drawerToggle:checked~.drawer{left:0}#drawerToggle:checked~.stage{margin-left:252px}.scannerGrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:18px}.scannerPanel{border:1px solid var(--line);border-radius:20px;background:#031a14;padding:16px}.terminal{min-height:320px;max-height:520px}.smallTerminal{min-height:260px}.progress{height:10px;background:#010b08;border:1px solid var(--line);border-radius:999px;overflow:hidden;margin:12px 0}.progress span{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--leaf),var(--lime),var(--teal));box-shadow:0 0 18px var(--leaf)}.glassHero{background:linear-gradient(135deg,#073229dd,#02100ddd)!important}.hamb{position:fixed;left:18px;top:18px;z-index:4;background:#053b31;border:1px solid var(--line);border-radius:14px;color:var(--leaf);padding:12px 16px;cursor:pointer;box-shadow:0 0 18px #20e69a44}.drawer{position:fixed;left:-280px;top:0;bottom:0;width:260px;z-index:3;background:linear-gradient(180deg,#06251e,#02100d);border-right:1px solid var(--line);padding:70px 16px 16px;transition:left .28s ease;box-shadow:0 0 40px #000}.drawer h2{color:var(--leaf)}.drawer a{display:block;margin:8px 0;padding:12px;border:1px solid var(--line);border-radius:14px;color:var(--leaf);text-decoration:none;background:#031c16}.drawer a:hover{background:#093b2e;transform:translateX(4px)}#drawerToggle:checked~.drawer{left:0}#drawerToggle:checked~.stage{transform:translateX(270px);max-width:calc(100% - 280px)}.stage{transition:transform .28s ease}.toolForm{display:grid;gap:10px;max-width:640px}.toolForm input,.scannerPanel input,.scannerPanel select{background:#010b08;color:var(--text);border:1px solid var(--line);border-radius:12px;padding:10px;font-family:inherit;margin:4px 0 10px}.scannerPanel label{display:block;color:var(--lime);font-weight:700}.toolForm input{background:#010b08;color:var(--text);border:1px solid var(--line);border-radius:12px;padding:12px;font-family:inherit}.toolForm label{color:var(--lime);font-weight:700}.hero,.card{border:1px solid var(--line);border-radius:24px;background:linear-gradient(180deg,#082216e8,#03100ae8);box-shadow:0 0 24px #14f19522;padding:16px;margin-bottom:16px}h1{margin:0;color:var(--leaf);font-size:28px;text-shadow:0 0 18px #14f195aa}h2{margin:0 0 12px;color:#21d6a5;font-size:18px}.sub,.muted{color:var(--muted)}.msg{margin-top:10px;color:var(--lime)}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px}.wide{grid-column:1/-1}.btn{display:inline-flex;align-items:center;justify-content:center;margin:5px;padding:12px 15px;border-radius:15px;background:linear-gradient(135deg,var(--leaf),var(--lime));color:#001208;text-decoration:none;font-weight:900;border:0}.ghost{background:linear-gradient(135deg,#0e2b1e,#10351f);color:var(--leaf);border:1px solid var(--line)}.danger{background:linear-gradient(135deg,var(--danger),#ff9bb8)}.amber{background:linear-gradient(135deg,var(--amber),#e0a326)}.mini{padding:7px 10px;font-size:11px}.statusGrid{display:grid;gap:8px}.pill{display:flex;justify-content:space-between;gap:10px;border:1px solid #14f19533;border-radius:12px;padding:8px;background:#020a0788}.ok{color:var(--lime)}.bad,.dangerText{color:var(--danger)}.controlRow{display:flex;flex-wrap:wrap}.toolbar{margin:0 0 14px}.file{display:grid;grid-template-columns:1fr auto auto;gap:10px;align-items:center;border:1px solid #14f19533;border-radius:12px;padding:9px;margin:7px 0;background:#020a0788}pre{white-space:pre-wrap;word-break:break-word;max-height:420px;overflow:auto;background:#020a07;border:1px solid #14f19533;border-radius:16px;padding:13px;color:var(--text)}.lightCard.on{border-color:#55ff85;box-shadow:0 0 34px #14f19566}.lightCard.off{border-color:#176343;box-shadow:0 0 18px #000}.powerPanel{display:flex;gap:16px;align-items:center;margin:6px 0 16px}.powerOrb{width:92px;height:92px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:900;letter-spacing:1px;background:#06140d;border:2px solid #24543d;color:var(--muted);box-shadow:inset 0 0 24px #000}.lightCard.on .powerOrb{background:radial-gradient(circle,#b6ff4d 0,#14f195 45%,#004f2f 100%);color:#001208;box-shadow:0 0 32px #14f195aa,inset 0 0 18px #ffffff77}.lightCard.off .powerOrb{background:radial-gradient(circle,#221018 0,#0c090b 65%,#040404 100%);border-color:#ff4d7d55;color:#ff7fa0;box-shadow:0 0 20px #ff4d7d33}.powerMeta{flex:1}.stateTitle{font-size:22px;font-weight:900;color:var(--leaf)}.lightCard.off .stateTitle{color:var(--danger)}.stateSub{margin-top:4px;color:var(--muted)}.bar{height:12px;background:#03110b;border:1px solid #14f19544;border-radius:999px;overflow:hidden;margin-top:12px}.bar span{display:block;height:100%;width:0%;background:linear-gradient(90deg,var(--leaf),var(--lime),var(--teal));box-shadow:0 0 15px #14f195}.cmdBtn,.sceneBtn{display:inline-flex;align-items:center;justify-content:center;gap:8px;margin:5px;padding:13px 17px;border-radius:15px;text-decoration:none;font-weight:900;border:1px solid #14f19555;color:var(--leaf);background:#06180f}.cmdBtn.active,.sceneBtn.active{transform:translateY(-1px);box-shadow:0 0 24px #14f19588}.onCmd.active{background:linear-gradient(135deg,#14f195,#b6ff4d);color:#001208}.offCmd.active{background:linear-gradient(135deg,#ff4d7d,#ff9bb8);color:#190006}.dimCmd.active{background:linear-gradient(135deg,#ffcc66,#ffea92);color:#1e1200}.sceneBtn{min-width:88px;min-height:54px;flex-direction:column}.sceneDot{width:13px;height:13px;border-radius:50%;background:#136943;box-shadow:0 0 10px #14f19544}.sceneBtn.active{background:linear-gradient(135deg,#8a5cf6,#14f195);color:#001208;border-color:#b6ff4d}.sceneBtn.active .sceneDot{background:#fff;box-shadow:0 0 18px #fff}.activeScene{border:1px solid #8a5cf655;border-radius:16px;background:#050c12;padding:12px;margin-bottom:12px}.activeScene span{display:block;color:var(--muted);font-size:12px}.activeScene b{display:block;color:var(--violet);font-size:24px;margin-top:3px;text-shadow:0 0 16px #8a5cf688}.sliderWrap{margin-top:15px}.jungleSlider{width:100%;appearance:none;background:transparent;cursor:pointer}.jungleSlider::-webkit-slider-runnable-track{height:14px;border-radius:999px;background:linear-gradient(90deg,#173423,#14f195,#b6ff4d,#00e5ff);border:1px solid #14f19566;box-shadow:0 0 14px #14f19533}.jungleSlider::-webkit-slider-thumb{appearance:none;width:28px;height:28px;border-radius:50%;background:radial-gradient(circle,#ffffff 0,#b6ff4d 35%,#14f195 70%,#00663c 100%);border:2px solid #eafff4;margin-top:-8px;box-shadow:0 0 22px #14f195,0 0 8px #ffffff}.jungleSlider::-moz-range-track{height:14px;border-radius:999px;background:linear-gradient(90deg,#173423,#14f195,#b6ff4d,#00e5ff);border:1px solid #14f19566}.jungleSlider::-moz-range-thumb{width:28px;height:28px;border-radius:50%;background:#14f195;border:2px solid #eafff4;box-shadow:0 0 18px #14f195}.sliderMeta{display:flex;justify-content:space-between;color:var(--muted);font-size:12px;margin-top:7px}.sliderMeta b{color:var(--lime);font-size:14px;text-shadow:0 0 10px #b6ff4d}.wsHint{color:var(--muted);font-size:12px;margin-top:10px}.wsHint b{color:var(--lime)}
-</style></head><body><button id='pinBtn' class='pinBtn'>PIN SIDEBAR</button><input id='drawerToggle' type='checkbox' hidden><label class='hamb' for='drawerToggle'>☰</label><aside class='drawer'><h2>CASAMBI JUNGLE</h2><a href='/'>Dashboard</a><a href='/lights'>Lichter & Szenen</a><a href='/scanners'>Scanners</a><a href='/tools'>Tools</a><a href='/settings'>Settings</a><a href='/files'>SMB Browser</a><a href='/logs'>Live Log</a></aside><main class='stage'><div class='wrap'>$body</div></main><script>const b=document.body; if(localStorage.sidebarPinned==='0') b.classList.add('unpinned'); const pb=document.getElementById('pinBtn');function syncPin(){pb.textContent=b.classList.contains('unpinned')?'SHOW SIDEBAR':'HIDE SIDEBAR'};syncPin();pb.onclick=()=>{b.classList.toggle('unpinned');localStorage.sidebarPinned=b.classList.contains('unpinned')?'0':'1';syncPin()};</script></body></html>
+.wrap{max-width:none;margin:0;padding:18px 22px;overflow-x:hidden}.pinBtn{position:fixed;right:18px;top:18px;z-index:5;background:#063d32;color:var(--leaf);border:1px solid var(--line);border-radius:14px;padding:11px 14px;font-family:inherit;font-weight:900}.hamb{position:fixed;left:14px;top:14px;z-index:5;background:#063d32;border:1px solid var(--line);border-radius:14px;color:var(--leaf);padding:12px 16px;cursor:pointer;box-shadow:0 0 18px #20e69a44}.drawer{position:fixed;left:0;top:0;bottom:0;width:252px;z-index:4;background:linear-gradient(180deg,#06251e,#02100d);border-right:1px solid var(--line);padding:70px 16px 16px;transition:left .28s ease;box-shadow:0 0 40px #000}.drawer h2{color:var(--leaf)}.drawer a{display:block;margin:8px 0;padding:12px;border:1px solid var(--line);border-radius:14px;color:var(--leaf);text-decoration:none;background:#031c16;transition:transform .18s ease,background .18s ease}.drawer a:hover{background:#0a3e31;transform:translateX(5px)}.stage{margin-left:252px;transition:margin-left .28s ease,transform .28s ease;min-width:0}.unpinned .drawer{left:-272px}.unpinned .stage{margin-left:58px}#drawerToggle:checked~.drawer{left:0}#drawerToggle:checked~.stage{margin-left:252px}.scannerGrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:18px}.scannerPanel{border:1px solid var(--line);border-radius:20px;background:#031a14;padding:16px}.terminal{min-height:320px;max-height:520px}.smallTerminal{min-height:260px}.progress{height:10px;background:#010b08;border:1px solid var(--line);border-radius:999px;overflow:hidden;margin:12px 0}.progress span{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--leaf),var(--lime),var(--teal));box-shadow:0 0 18px var(--leaf)}.glassHero{background:linear-gradient(135deg,#073229dd,#02100ddd)!important}.settingsGrid{max-width:940px}.settingsForm{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px 18px}.settingsForm h2{grid-column:1/-1;margin-top:18px}.settingsForm input{background:#010b08;color:var(--text);border:1px solid var(--line);border-radius:12px;padding:12px;font-family:inherit}.settingsForm label{color:var(--lime);font-weight:800}.switchLine{grid-column:1/-1;display:flex;align-items:center;justify-content:space-between;border:1px solid var(--line);border-radius:16px;padding:10px 12px;background:#031c16}.switchLine input{display:none}.switchLine b{width:54px;height:28px;border-radius:999px;background:#06241d;border:1px solid var(--line);position:relative}.switchLine b:before{content:"";position:absolute;width:22px;height:22px;left:3px;top:2px;border-radius:50%;background:#315b4f;transition:left .18s ease,background .18s ease}.switchLine input:checked+b:before{left:27px;background:var(--leaf);box-shadow:0 0 16px var(--leaf)}.saveBtn{grid-column:1/-1;max-width:260px}.hamb{position:fixed;left:14px;top:14px;z-index:4;background:#053b31;border:1px solid var(--line);border-radius:14px;color:var(--leaf);padding:12px 16px;cursor:pointer;box-shadow:0 0 18px #20e69a44}.drawer{position:fixed;left:-280px;top:0;bottom:0;width:260px;z-index:3;background:linear-gradient(180deg,#06251e,#02100d);border-right:1px solid var(--line);padding:70px 16px 16px;transition:left .28s ease;box-shadow:0 0 40px #000}.drawer h2{color:var(--leaf)}.drawer a{display:block;margin:8px 0;padding:12px;border:1px solid var(--line);border-radius:14px;color:var(--leaf);text-decoration:none;background:#031c16}.drawer a:hover{background:#093b2e;transform:translateX(4px)}#drawerToggle:checked~.drawer{left:0}#drawerToggle:checked~.stage{transform:translateX(270px);max-width:calc(100% - 280px)}.stage{transition:transform .28s ease}.toolForm{display:grid;gap:10px;max-width:640px}.toolForm input,.scannerPanel input,.scannerPanel select{background:#010b08;color:var(--text);border:1px solid var(--line);border-radius:12px;padding:10px;font-family:inherit;margin:4px 0 10px}.scannerPanel label{display:block;color:var(--lime);font-weight:700}.toolForm input{background:#010b08;color:var(--text);border:1px solid var(--line);border-radius:12px;padding:12px;font-family:inherit}.toolForm label{color:var(--lime);font-weight:700}.hero,.card{border:1px solid var(--line);border-radius:24px;background:linear-gradient(180deg,#082216e8,#03100ae8);box-shadow:0 0 24px #14f19522;padding:16px;margin-bottom:16px}h1{margin:0;color:var(--leaf);font-size:28px;text-shadow:0 0 18px #14f195aa}h2{margin:0 0 12px;color:#21d6a5;font-size:18px}.sub,.muted{color:var(--muted)}.msg{margin-top:10px;color:var(--lime)}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px}.wide{grid-column:1/-1}.btn{display:inline-flex;align-items:center;justify-content:center;margin:5px;padding:12px 15px;border-radius:15px;background:linear-gradient(135deg,var(--leaf),var(--lime));color:#001208;text-decoration:none;font-weight:900;border:0}.ghost{background:linear-gradient(135deg,#0e2b1e,#10351f);color:var(--leaf);border:1px solid var(--line)}.danger{background:linear-gradient(135deg,var(--danger),#ff9bb8)}.amber{background:linear-gradient(135deg,var(--amber),#e0a326)}.mini{padding:7px 10px;font-size:11px}.statusGrid{display:grid;gap:8px}.pill{display:flex;justify-content:space-between;gap:10px;border:1px solid #14f19533;border-radius:12px;padding:8px;background:#020a0788}.ok{color:var(--lime)}.bad,.dangerText{color:var(--danger)}.controlRow{display:flex;flex-wrap:wrap}.toolbar{margin:0 0 14px}.file{display:grid;grid-template-columns:1fr auto auto;gap:10px;align-items:center;border:1px solid #14f19533;border-radius:12px;padding:9px;margin:7px 0;background:#020a0788}pre{white-space:pre-wrap;word-break:break-word;max-height:420px;overflow:auto;background:#020a07;border:1px solid #14f19533;border-radius:16px;padding:13px;color:var(--text)}.lightCard.on{border-color:#55ff85;box-shadow:0 0 34px #14f19566}.lightCard.off{border-color:#176343;box-shadow:0 0 18px #000}.powerPanel{display:flex;gap:16px;align-items:center;margin:6px 0 16px}.powerOrb{width:92px;height:92px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:900;letter-spacing:1px;background:#06140d;border:2px solid #24543d;color:var(--muted);box-shadow:inset 0 0 24px #000}.lightCard.on .powerOrb{background:radial-gradient(circle,#b6ff4d 0,#14f195 45%,#004f2f 100%);color:#001208;box-shadow:0 0 32px #14f195aa,inset 0 0 18px #ffffff77}.lightCard.off .powerOrb{background:radial-gradient(circle,#221018 0,#0c090b 65%,#040404 100%);border-color:#ff4d7d55;color:#ff7fa0;box-shadow:0 0 20px #ff4d7d33}.powerMeta{flex:1}.stateTitle{font-size:22px;font-weight:900;color:var(--leaf)}.lightCard.off .stateTitle{color:var(--danger)}.stateSub{margin-top:4px;color:var(--muted)}.bar{height:12px;background:#03110b;border:1px solid #14f19544;border-radius:999px;overflow:hidden;margin-top:12px}.bar span{display:block;height:100%;width:0%;background:linear-gradient(90deg,var(--leaf),var(--lime),var(--teal));box-shadow:0 0 15px #14f195}.cmdBtn,.sceneBtn{display:inline-flex;align-items:center;justify-content:center;gap:8px;margin:5px;padding:13px 17px;border-radius:15px;text-decoration:none;font-weight:900;border:1px solid #14f19555;color:var(--leaf);background:#06180f}.cmdBtn.active,.sceneBtn.active{transform:translateY(-1px);box-shadow:0 0 24px #14f19588}.onCmd.active{background:linear-gradient(135deg,#14f195,#b6ff4d);color:#001208}.offCmd.active{background:linear-gradient(135deg,#ff4d7d,#ff9bb8);color:#190006}.dimCmd.active{background:linear-gradient(135deg,#ffcc66,#ffea92);color:#1e1200}.sceneBtn{min-width:88px;min-height:54px;flex-direction:column}.sceneDot{width:13px;height:13px;border-radius:50%;background:#136943;box-shadow:0 0 10px #14f19544}.sceneBtn.active{background:linear-gradient(135deg,#8a5cf6,#14f195);color:#001208;border-color:#b6ff4d}.sceneBtn.active .sceneDot{background:#fff;box-shadow:0 0 18px #fff}.activeScene{border:1px solid #8a5cf655;border-radius:16px;background:#050c12;padding:12px;margin-bottom:12px}.activeScene span{display:block;color:var(--muted);font-size:12px}.activeScene b{display:block;color:var(--violet);font-size:24px;margin-top:3px;text-shadow:0 0 16px #8a5cf688}.sliderWrap{margin-top:15px}.jungleSlider{width:100%;appearance:none;background:transparent;cursor:pointer}.jungleSlider::-webkit-slider-runnable-track{height:14px;border-radius:999px;background:linear-gradient(90deg,#173423,#14f195,#b6ff4d,#00e5ff);border:1px solid #14f19566;box-shadow:0 0 14px #14f19533}.jungleSlider::-webkit-slider-thumb{appearance:none;width:28px;height:28px;border-radius:50%;background:radial-gradient(circle,#ffffff 0,#b6ff4d 35%,#14f195 70%,#00663c 100%);border:2px solid #eafff4;margin-top:-8px;box-shadow:0 0 22px #14f195,0 0 8px #ffffff}.jungleSlider::-moz-range-track{height:14px;border-radius:999px;background:linear-gradient(90deg,#173423,#14f195,#b6ff4d,#00e5ff);border:1px solid #14f19566}.jungleSlider::-moz-range-thumb{width:28px;height:28px;border-radius:50%;background:#14f195;border:2px solid #eafff4;box-shadow:0 0 18px #14f195}.sliderMeta{display:flex;justify-content:space-between;color:var(--muted);font-size:12px;margin-top:7px}.sliderMeta b{color:var(--lime);font-size:14px;text-shadow:0 0 10px #b6ff4d}.wsHint{color:var(--muted);font-size:12px;margin-top:10px}.wsHint b{color:var(--lime)}
+</style></head><body><button id='pinBtn' class='pinBtn'>HIDE SIDEBAR</button><input id='drawerToggle' type='checkbox' hidden><label class='hamb' for='drawerToggle'>☰</label><aside class='drawer'><h2>CASAMBI JUNGLE</h2><a href='/'>Dashboard</a><a href='/lights'>Lichter & Szenen</a><a href='/scanners'>Scanners</a><a href='/tools'>Tools</a><a href='/settings'>Settings</a><a href='/files'>SMB Browser</a><a href='/logs'>Live Log</a></aside><main class='stage'><div class='wrap'>$body</div></main><script>const b=document.body; if(localStorage.sidebarPinned==='0') b.classList.add('unpinned'); const pb=document.getElementById('pinBtn');function syncPin(){pb.textContent=b.classList.contains('unpinned')?'SHOW SIDEBAR':'HIDE SIDEBAR'};syncPin();pb.onclick=()=>{b.classList.toggle('unpinned');localStorage.sidebarPinned=b.classList.contains('unpinned')?'0':'1';syncPin()};</script></body></html>
 """.trimIndent()
 
     private fun statusScript(): String = """

@@ -1,8 +1,8 @@
-# Casambi Bridge v0.8.3
+# Casambi Bridge v0.8.4
 
-v0.8.3 ist der erste grosse Schritt Richtung Discovery 2.0, Diagnose-Dashboard und spaeterer HACS-Faehigkeit.
+v0.8.4 ist der erste grosse Schritt Richtung Discovery 2.0, Diagnose-Dashboard und spaeterer HACS-Faehigkeit.
 
-## Neu in v0.8.3
+## Neu in v0.8.4
 
 ### Diagnostics & Discovery 2.0
 

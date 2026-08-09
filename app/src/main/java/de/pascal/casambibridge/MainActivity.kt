@@ -144,7 +144,7 @@ class MainActivity : AppCompatActivity() {
 
         val headerBlock = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         headerBlock.addView(TextView(this).apply {
-            text = "🌴 CASAMBI JUNGLE\n// v0.8.3"
+            text = "🌴 CASAMBI JUNGLE\n// v0.8.4"
             textSize = 20f
             setTextColor(leaf)
             setTypeface(Typeface.MONOSPACE, Typeface.BOLD)
@@ -1031,12 +1031,37 @@ class MainActivity : AppCompatActivity() {
                 ui.postDelayed({ runCatching { scanner.stopScan(callback) }; activeBtScanner = null; activeBtCallback = null; rememberSession(bluetoothSessions, lastBluetoothScanText); LogBus.log("Bluetooth Scanner: Scan all fertig Treffer=${found.size}") }, 9000)
             } catch (t: Throwable) { bluetoothResultText.text = "Bluetooth Scan Fehler: ${t.message}" }
         }
+        fun wifiSecurityLabel(caps: String): String {
+            val c = caps.uppercase()
+            return when {
+                c.contains("SAE") -> "WPA3"
+                c.contains("OWE") -> "WPA3/OWE"
+                c.contains("EAP") && c.contains("WPA2") -> "WPA2-Enterprise"
+                c.contains("EAP") -> "Enterprise"
+                c.contains("WPA2") || c.contains("RSN") -> "WPA2"
+                c.contains("WPA") -> "WPA"
+                c.contains("WEP") -> "WEP"
+                else -> "OPEN"
+            }
+        }
+        fun wifiBand(freq: Int): String = when {
+            freq in 2400..2499 -> "2.4 GHz"
+            freq in 4900..5899 -> "5 GHz"
+            freq in 5925..7125 -> "6 GHz"
+            else -> "${freq} MHz"
+        }
+        @Suppress("DEPRECATION")
+        fun wifiLine(r: android.net.wifi.ScanResult): String {
+            val ssid = (r.SSID ?: "").ifBlank { "<hidden>" }
+            val sec = wifiSecurityLabel(r.capabilities ?: "")
+            val band = wifiBand(r.frequency)
+            return "rssi=${r.level.toString().padStart(4)}  ssid=$ssid  sec=$sec  band=$band  freq=${r.frequency}  bssid=${r.BSSID}  caps=${r.capabilities}"
+        }
         @Suppress("DEPRECATION")
         fun renderWifiRows(rowsRaw: List<android.net.wifi.ScanResult>, filter: String) {
-            val rows = rowsRaw.map { r ->
-                val ssid = (r.SSID ?: "").ifBlank { "<hidden>" }
-                "rssi=${r.level.toString().padStart(4)}  ssid=$ssid  bssid=${r.BSSID}  freq=${r.frequency}  caps=${r.capabilities}"
-            }.filter { filter.isBlank() || it.lowercase().contains(filter) }.sortedByDescending { it.substringAfter("rssi=").substringBefore(" ").trim().toIntOrNull() ?: -999 }
+            val rows = rowsRaw.map { r -> wifiLine(r) }
+                .filter { filter.isBlank() || it.lowercase().contains(filter) }
+                .sortedByDescending { it.substringAfter("rssi=").substringBefore(" ").trim().toIntOrNull() ?: -999 }
             val grouped = rows.groupBy { it.substringAfter("ssid=").substringBefore("  bssid=") }
                 .flatMap { (ssid, items) -> listOf("SSID: $ssid (${items.size})") + items.map { "  $it" } }
             lastWifiScanText = "WiFi Scan  Treffer=${rows.size}\n" + grouped.joinToString("\n").ifBlank { "Keine Treffer. Android 8.1 Tipp: WLAN-Einstellungen öffnen, Standortdienste aktivieren, danach erneut scannen.\n" + scannerPermissionStatus() }
