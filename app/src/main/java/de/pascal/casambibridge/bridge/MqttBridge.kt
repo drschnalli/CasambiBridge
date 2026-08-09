@@ -170,7 +170,7 @@ class MqttBridge(
 
     fun publishTest() = publish(
         topic("test"),
-        JSONObject().put("bridge", "casambi").put("version", "0.10.2").toString(),
+        JSONObject().put("bridge", "casambi").put("version", "0.10.3").toString(),
         false
     )
 
@@ -188,7 +188,7 @@ class MqttBridge(
             .put("name", c.casambiNetworkName.ifBlank { "Casambi Jungle Bridge" })
             .put("base_topic", c.baseTopic)
             .put("web_url", webUrl)
-            .put("version", "0.10.2")
+            .put("version", "0.10.3")
             .put("manufacturer", "Casambi Jungle")
             .put("model", "Android BLE Bridge")
             .put("mqtt", if (c.mqttEnabled) "on" else "off")
@@ -202,7 +202,7 @@ class MqttBridge(
 
     fun publishHacsDiagnostics(c: BridgeConfig = config) {
         val fmt = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.GERMANY)
-        publish(topic("diagnostics/bridge_version"), "0.10.2", true)
+        publish(topic("diagnostics/bridge_version"), "0.10.3", true)
         publish(topic("diagnostics/last_sync"), if (RuntimeStatus.lastSyncMillis > 0L) fmt.format(Date(RuntimeStatus.lastSyncMillis)) else "never", true)
         publish(topic("diagnostics/active_scene"), RuntimeStatus.lastSceneName.ifBlank { "none" }, true)
         publish(topic("diagnostics/web_interface_url"), if (c.webInterfaceEnabled) localWebUrl(c) else "disabled", true)
@@ -317,10 +317,10 @@ class MqttBridge(
     }
 
     fun publishDiscoveryForDiagnostics() {
-        log("MQTT Diagnostics Discovery in v0.10.2 voruebergehend deaktiviert")
+        log("MQTT Diagnostics Discovery in v0.10.3 voruebergehend deaktiviert")
     }
     fun publishDiagnosticStates() {
-        // v0.10.2: disabled to avoid MQTT publish storms on Android/Paho.
+        // v0.10.3: disabled to avoid MQTT publish storms on Android/Paho.
         return
     }
     fun publishBridgeStatus(bridge: String, ble: String) {
@@ -415,7 +415,7 @@ class MqttBridge(
         .put("name", "Android Casambi Bridge")
         .put("manufacturer", "Pascal/Copilot")
         .put("model", "Android BLE Bridge")
-        .put("sw_version", "0.10.2")
+        .put("sw_version", "0.10.3")
 
     private fun publish(topicName: String, payload: String, retained: Boolean) {
         val mqttClient = client ?: return
