@@ -238,7 +238,7 @@ object WebControlServer {
         val webUrl = localWebUrl(c)
         return JSONObject()
             .put("name", c.casambiNetworkName.ifBlank { "Casambi Jungle Bridge" })
-            .put("version", "0.10.1")
+            .put("version", "0.10.2")
             .put("mode", if (c.mqttEnabled && c.directModeEnabled) "hybrid" else if (c.directModeEnabled) "direct" else "mqtt")
             .put("mqtt_enabled", c.mqttEnabled && c.mqttHost.isNotBlank())
             .put("direct_enabled", c.directModeEnabled)
@@ -301,7 +301,7 @@ object WebControlServer {
         .put("brightnessPct", ((RuntimeStatus.lastBrightness.coerceIn(0,255) * 100) / 255))
         .put("lastSyncText", if (RuntimeStatus.lastSyncMillis > 0L) ageText(RuntimeStatus.lastSyncMillis) else "not synced")
         .put("lastUpdateText", if (RuntimeStatus.lastUpdateMillis > 0L) ageText(RuntimeStatus.lastUpdateMillis) else "never")
-        .put("version", "0.10.1")
+        .put("version", "0.10.2")
         .put("direct", appContext?.let { ConfigStore.load(it).directModeEnabled } ?: false)
         .put("mdns", appContext?.let { ConfigStore.load(it).networkDiscoveryEnabled } ?: false)
         .toString()
@@ -362,6 +362,8 @@ object WebControlServer {
         val c = ConfigStore.load(ctx)
         if (c.smbServer.isBlank() || c.smbShare.isBlank()) return JSONObject().put("ok", false).put("error", "SMB nicht konfiguriert").toString()
         val type = (params["type"] ?: "scan").replace(Regex("[^A-Za-z0-9_-]"), "_").ifBlank { "scan" }
+        val extRaw = (params["ext"] ?: "txt").lowercase().replace(Regex("[^a-z0-9]"), "")
+        val ext = if (extRaw == "xls" || extRaw == "html" || extRaw == "csv" || extRaw == "txt") extRaw else "txt"
         val text = params["text"] ?: ""
         if (text.isBlank()) return JSONObject().put("ok", false).put("error", "Export Text leer").toString()
         return try {
@@ -369,11 +371,11 @@ object WebControlServer {
             val dir = DebugExporter.smbDir(c)
             SmbFile(dir, smbCtx).use { if (!it.exists()) it.mkdirs() }
             val stamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
-            val name = "web_${type}_${stamp}.txt"
+            val name = "web_${type}_${stamp}.${ext}"
             val url = dir + name
             SmbFileOutputStream(SmbFile(url, smbCtx), false).use { out -> out.write(text.toByteArray(Charsets.UTF_8)) }
             LogBus.log("Web Scan SMB Export gespeichert: $url")
-            JSONObject().put("ok", true).put("url", url).put("file", name).toString()
+            JSONObject().put("ok", true).put("url", url).put("file", name).put("ext", ext).toString()
         } catch (t: Throwable) {
             LogBus.log("Web Scan SMB Export Fehler: ${t.message ?: t.javaClass.simpleName}")
             JSONObject().put("ok", false).put("error", t.message ?: t.javaClass.simpleName).toString()
@@ -388,21 +390,21 @@ object WebControlServer {
     <label>Range Basis/CIDR</label><input id='netRange' value='' placeholder='leer = aktuelles /24'>
     <label>Port Preset</label><select id='portPreset' onchange='applyPortPreset()'><option value='known'>Known Ports</option><option value='none'>Ohne Ports / Host only</option><option value='custom'>Custom</option><option value='all'>All Ports langsam</option></select>
     <label>Ports</label><input id='netPorts' value='known' placeholder='none, known, all oder 22,80,443'>
-    <div class='controlRow'><button class='btn' onclick='startNetworkLive()'>START LIVE</button><button class='btn ghost' onclick='stopNetworkLive()'>STOP</button><button class='btn ghost' onclick='clearTerminal("scanTerminal","netProgress")'>CLEAR</button><button class='btn ghost' onclick='exportTerminalSmb("Network","scanTerminal")'>EXPORT SMB</button></div>
+    <div class='controlRow'><button class='btn' onclick='startNetworkLive()'>START LIVE</button><button class='btn ghost' onclick='stopNetworkLive()'>STOP</button><button class='btn ghost' onclick='clearTerminal("scanTerminal","netProgress")'>CLEAR</button><button class='btn ghost' onclick='exportTerminalSmb("Network","scanTerminal")'>EXPORT SMB</button><button class='btn ghost' onclick='exportTerminalExcelSmb("Network","scanTerminal")'>EXCEL SMB</button></div>
     <div class='progress'><span id='netProgress'></span></div>
     <pre id='scanTerminal' class='terminal'>Bereit.</pre><div id='networkCards' class='scanCards'></div>
   </div>
   <div class='scannerPanel'>
     <h2>Live WiFi Scanner</h2>
     <label>Filter SSID/BSSID</label><input id='wifiFilter'>
-    <div class='controlRow'><button class='btn' onclick='startWifiLive()'>START WIFI LIVE</button><button class='btn ghost' onclick='stopWifiLive()'>STOP</button><button class='btn ghost' onclick='clearTerminal("wifiTerminal","wifiProgress")'>CLEAR</button><button class='btn ghost' onclick='exportTerminalSmb("WiFi","wifiTerminal")'>EXPORT SMB</button></div>
+    <div class='controlRow'><button class='btn' onclick='startWifiLive()'>START WIFI LIVE</button><button class='btn ghost' onclick='stopWifiLive()'>STOP</button><button class='btn ghost' onclick='clearTerminal("wifiTerminal","wifiProgress")'>CLEAR</button><button class='btn ghost' onclick='exportTerminalSmb("WiFi","wifiTerminal")'>EXPORT SMB</button><button class='btn ghost' onclick='exportTerminalExcelSmb("WiFi","wifiTerminal")'>EXCEL SMB</button></div>
     <div class='progress'><span id='wifiProgress'></span></div>
     <pre id='wifiTerminal' class='terminal smallTerminal'>Bereit. Android 8.1 kann WiFi ScanResults leer liefern.</pre><div id='wifiAnalysis' class='analysisBox'></div><div id='wifiCards' class='scanCards'></div>
   </div>
   <div class='scannerPanel'>
     <h2>Live Bluetooth Scanner</h2>
     <label>Filter Name/MAC</label><input id='bleFilter'><label class='switchInline'><input id='bleCasambiOnly' type='checkbox'> <span>Nur Casambi Watch</span></label>
-    <div class='controlRow'><button class='btn' onclick='startBleLive()'>START BLE LIVE</button><button class='btn ghost' onclick='stopBleLive()'>STOP</button><button class='btn ghost' onclick='clearTerminal("bleTerminal","bleProgress")'>CLEAR</button><button class='btn ghost' onclick='exportTerminalSmb("Bluetooth","bleTerminal")'>EXPORT SMB</button></div>
+    <div class='controlRow'><button class='btn' onclick='startBleLive()'>START BLE LIVE</button><button class='btn ghost' onclick='stopBleLive()'>STOP</button><button class='btn ghost' onclick='clearTerminal("bleTerminal","bleProgress")'>CLEAR</button><button class='btn ghost' onclick='exportTerminalSmb("Bluetooth","bleTerminal")'>EXPORT SMB</button><button class='btn ghost' onclick='exportTerminalExcelSmb("Bluetooth","bleTerminal")'>EXCEL SMB</button></div>
     <div class='progress'><span id='bleProgress'></span></div>
     <pre id='bleTerminal' class='terminal smallTerminal'>Bereit.</pre><div id='bleCards' class='scanCards'></div>
   </div>
@@ -413,8 +415,16 @@ const seenBle=new Set(); const seenWifi=new Set();
 function term(id,line){const el=document.getElementById(id);el.textContent += '\n' + line;el.scrollTop=el.scrollHeight;}
 function clearTerminal(id,progress){document.getElementById(id).textContent='Bereit.';document.getElementById(progress).style.width='0%'; if(id==='bleTerminal'){seenBle.clear();bleSeen.clear();document.getElementById('bleCards').innerHTML='';} if(id==='wifiTerminal'){seenWifi.clear();wifiSeenByBssid.clear();wifiSeenBySsid.clear();wifiChannels.clear();document.getElementById('wifiCards').innerHTML='';document.getElementById('wifiAnalysis').innerHTML='';} if(id==='scanTerminal'){document.getElementById('networkCards').innerHTML='';}}
 function saveHistory(type,text){let arr=[];try{arr=JSON.parse(localStorage.scanHistory||'[]')}catch(e){};arr.unshift({type:type,time:new Date().toLocaleString(),count:text.split('\n').filter(Boolean).length,text:text});localStorage.scanHistory=JSON.stringify(arr.slice(0,10));}
-async function exportTextSmb(type,text){if(!text||!text.trim()){alert('Kein Export-Text vorhanden.');return;}try{const r=await fetch('/api/export-scan-smb?type='+encodeURIComponent(type)+'&text='+encodeURIComponent(text),{cache:'no-store'});const j=await r.json();alert(j.ok?'SMB Export gespeichert: '+j.file:'SMB Export Fehler: '+j.error);}catch(e){alert('SMB Export Fehler: '+e);}}
-function exportTerminalSmb(type,id){exportTextSmb(type,document.getElementById(id).textContent||'');}
+function q(line,key){let m=String(line).match(new RegExp(key+'=([^ ]+(?: [^ ]+)?)(?=  |$)'));return m?m[1]:'-';}
+function sigDbm(line){let m=String(line).match(/signal=(-?\d+) dBm/);return m?m[1]:'';}
+function sigQuality(line){let m=String(line).match(/signal=-?\d+ dBm ([A-Za-z ]+) [█░]+/);return m?m[1].trim():'';}
+function portsOf(line){return String(line).split('ports=')[1]||'';}
+function rowsFromText(type,text){return String(text||'').split('\n').filter(Boolean).filter(function(line){return line.indexOf('ssid=')>=0||line.indexOf('host=')>=0||line.indexOf('mac=')>=0&&line.indexOf('signal=')>=0;}).map(function(line){let kind=line.indexOf('ssid=')>=0?'WiFi':(line.indexOf('host=')>=0?'Network':'Bluetooth');return {Type:kind,Name:kind==='WiFi'?q(line,'ssid'):(kind==='Network'?q(line,'name'):q(line,'name')),IP:kind==='Network'?q(line,'host'):'',Address:kind==='WiFi'?q(line,'bssid'):(kind==='Bluetooth'?q(line,'mac'):q(line,'mac')),Signal_dBm:sigDbm(line),Quality:sigQuality(line),Security:q(line,'sec'),Band:q(line,'band'),Channel:q(line,'ch'),Frequency:q(line,'freq'),Ping:q(line,'ping'),Ports:portsOf(line),Casambi:line.toLowerCase().indexOf('casambi')>=0?'yes':'',Raw:line};});}
+function buildExcelHtml(title,type,text){const rows=rowsFromText(type,text);const cols=['Type','Name','IP','Address','Signal_dBm','Quality','Security','Band','Channel','Frequency','Ping','Ports','Casambi','Raw'];const esc=function(v){return String(v||'').replace(/[&<>]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;'}[c];});};let summary='<tr><td colspan="14" class="title">CASAMBI JUNGLE SCAN REPORT</td></tr><tr><td colspan="14" class="sub">powered by Sambesi · '+esc(type)+' · '+esc(new Date().toLocaleString())+' · Rows '+rows.length+'</td></tr><tr></tr>';let head='<tr>'+cols.map(function(c){return '<th>'+esc(c)+'</th>';}).join('')+'</tr>';let body=rows.map(function(r){return '<tr>'+cols.map(function(c){let v=r[c]||'';let cls=(c==='Quality'||c==='Casambi'||c==='Security')?' class="tag"':'';return '<td'+cls+'>'+esc(v)+'</td>';}).join('')+'</tr>';}).join('');return '<html><head><meta charset="utf-8"><style>body{background:#02100d;color:#eafff4;font-family:Consolas,monospace}.title{font-size:22px;font-weight:900;color:#20e69a;background:#06251e}.sub{color:#91f36d;background:#031c16}table{border-collapse:collapse;width:100%}th{background:#063d32;color:#91f36d;border:1px solid #1ddca8;padding:8px;position:sticky;top:0}td{border:1px solid #1ddca8;padding:7px;background:#03100a;color:#eafff4}.tag{font-weight:700;color:#20e69a}</style></head><body><table>'+summary+head+body+'</table></body></html>';}
+async function exportTextSmb(type,text,ext){if(!text||!text.trim()){alert('Kein Export-Text vorhanden.');return;}try{const r=await fetch('/api/export-scan-smb?type='+encodeURIComponent(type)+'&ext='+(ext||'txt')+'&text='+encodeURIComponent(text),{cache:'no-store'});const j=await r.json();alert(j.ok?'SMB Export gespeichert: '+j.file:'SMB Export Fehler: '+j.error);}catch(e){alert('SMB Export Fehler: '+e);}}
+function exportTerminalSmb(type,id){exportTextSmb(type,document.getElementById(id).textContent||'','txt');}
+function exportTerminalExcelSmb(type,id){const text=document.getElementById(id).textContent||'';exportTextSmb(type+'_excel',buildExcelHtml('Casambi Jungle '+type,type,text),'xls');}
+function downloadExcel(type,text){const html=buildExcelHtml('Casambi Jungle '+type,type,text);const blob=new Blob([html],{type:'application/vnd.ms-excel'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='casambi_jungle_'+String(type||'scan')+'_'+new Date().toISOString().replace(/[:.]/g,'_')+'.xls';a.click();setTimeout(function(){URL.revokeObjectURL(a.href)},1200);}
 function html(v){return String(v||'').replace(/[&<>]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;'}[c];});}
 function val(line,key){let m=String(line).match(new RegExp(key+'=([^ ]+(?: [^ ]+)?)(?=  |$)'));return m?m[1]:'-';}
 function signalParts(line){let m=String(line).match(/signal=(-?\d+) dBm ([A-Za-z ]+) ([█░]+)/);return {dbm:m?m[1]:'-',q:m?m[2].trim():'-',bar:m?m[3]:''};}
@@ -690,7 +700,7 @@ async function startWifiLive(){wifiStop=false;clearTerminal('wifiTerminal','wifi
         return page("Casambi Jungle", """
 <div class='hero'>
   <h1>CASAMBI JUNGLE</h1>
-  <div class='sub'>${esc(c.casambiNetworkName.ifBlank { "Bridge Control Center" })} - powered by Sambesi - v0.10.1</div>
+  <div class='sub'>${esc(c.casambiNetworkName.ifBlank { "Bridge Control Center" })} - powered by Sambesi - v0.10.2</div>
   <div class='msg'>${esc(message)}</div>
 </div>
 <div class='grid'>
@@ -715,6 +725,8 @@ async function startWifiLive(){wifiStop=false;clearTerminal('wifiTerminal','wifi
   <input id='historyFilter' placeholder='Filter: wifi, bluetooth, 192.168, Schnuffel, WPA2...' oninput='loadHistory()'>
   <select id='historySort' class='historySort' onchange='loadHistory()'><option value='default'>Sort: Scan-Reihenfolge</option><option value='type'>Sort: Typ</option><option value='wifiSsid'>WiFi: SSID</option><option value='wifiSignal'>WiFi: Signal stark zuerst</option><option value='wifiChannel'>WiFi: Channel</option><option value='networkHost'>Network: IP/Host</option><option value='bleSignal'>BLE: Signal stark zuerst</option></select>
   <button class='btn ghost' onclick='exportFilteredHistorySmb()'>EXPORT FILTERED SMB</button>
+  <button class='btn ghost' onclick='exportFilteredHistoryExcelSmb()'>EXPORT FILTERED EXCEL SMB</button>
+  <button class='btn ghost' onclick='downloadFilteredExcel()'>DOWNLOAD FILTERED EXCEL</button>
   <button class='btn ghost' onclick='setQuickFilter("all")'>ALL</button>
   <button class='btn ghost' onclick='setQuickFilter("wifi")'>WiFi</button>
   <button class='btn ghost' onclick='setQuickFilter("network")'>Network</button>
@@ -738,22 +750,34 @@ function quickSummary(lines){const wifi=lines.filter(function(x){return x.indexO
 function lineCard(line){const cls=classifyLine(line);let icon=cls==='wifi'?'📶':cls==='network'?'🟢':cls==='bluetooth'?'🔵':'▸';return '<div class="histLine '+cls+'"><b>'+icon+'</b><span>'+escHtml(line)+'</span></div>';}
 function getHistory(){try{return JSON.parse(localStorage.scanHistory||'[]')}catch(e){return []}}
 function setHistory(arr){localStorage.scanHistory=JSON.stringify(arr.slice(0,10));}
-async function exportTextSmb(type,text){if(!text||!text.trim()){alert('Kein Export-Text vorhanden.');return;}try{const r=await fetch('/api/export-scan-smb?type='+encodeURIComponent(type)+'&text='+encodeURIComponent(text),{cache:'no-store'});const j=await r.json();alert(j.ok?'SMB Export gespeichert: '+j.file:'SMB Export Fehler: '+j.error);}catch(e){alert('SMB Export Fehler: '+e);}}
+function q(line,key){let m=String(line).match(new RegExp(key+'=([^ ]+(?: [^ ]+)?)(?=  |$)'));return m?m[1]:'-';}
+function sigDbm(line){let m=String(line).match(/signal=(-?\d+) dBm/);return m?m[1]:'';}
+function sigQuality(line){let m=String(line).match(/signal=-?\d+ dBm ([A-Za-z ]+) [█░]+/);return m?m[1].trim():'';}
+function portsOf(line){return String(line).split('ports=')[1]||'';}
+function rowsFromText(type,text){return String(text||'').split('\n').filter(Boolean).filter(function(line){return line.indexOf('ssid=')>=0||line.indexOf('host=')>=0||line.indexOf('mac=')>=0&&line.indexOf('signal=')>=0;}).map(function(line){let kind=line.indexOf('ssid=')>=0?'WiFi':(line.indexOf('host=')>=0?'Network':'Bluetooth');return {Type:kind,Name:kind==='WiFi'?q(line,'ssid'):(kind==='Network'?q(line,'name'):q(line,'name')),IP:kind==='Network'?q(line,'host'):'',Address:kind==='WiFi'?q(line,'bssid'):(kind==='Bluetooth'?q(line,'mac'):q(line,'mac')),Signal_dBm:sigDbm(line),Quality:sigQuality(line),Security:q(line,'sec'),Band:q(line,'band'),Channel:q(line,'ch'),Frequency:q(line,'freq'),Ping:q(line,'ping'),Ports:portsOf(line),Casambi:line.toLowerCase().indexOf('casambi')>=0?'yes':'',Raw:line};});}
+function buildExcelHtml(title,type,text){const rows=rowsFromText(type,text);const cols=['Type','Name','IP','Address','Signal_dBm','Quality','Security','Band','Channel','Frequency','Ping','Ports','Casambi','Raw'];const esc=function(v){return String(v||'').replace(/[&<>]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;'}[c];});};let summary='<tr><td colspan="14" class="title">CASAMBI JUNGLE SCAN REPORT</td></tr><tr><td colspan="14" class="sub">powered by Sambesi · '+esc(type)+' · '+esc(new Date().toLocaleString())+' · Rows '+rows.length+'</td></tr><tr></tr>';let head='<tr>'+cols.map(function(c){return '<th>'+esc(c)+'</th>';}).join('')+'</tr>';let body=rows.map(function(r){return '<tr>'+cols.map(function(c){let v=r[c]||'';let cls=(c==='Quality'||c==='Casambi'||c==='Security')?' class="tag"':'';return '<td'+cls+'>'+esc(v)+'</td>';}).join('')+'</tr>';}).join('');return '<html><head><meta charset="utf-8"><style>body{background:#02100d;color:#eafff4;font-family:Consolas,monospace}.title{font-size:22px;font-weight:900;color:#20e69a;background:#06251e}.sub{color:#91f36d;background:#031c16}table{border-collapse:collapse;width:100%}th{background:#063d32;color:#91f36d;border:1px solid #1ddca8;padding:8px}td{border:1px solid #1ddca8;padding:7px;background:#03100a;color:#eafff4}.tag{font-weight:700;color:#20e69a}</style></head><body><table>'+summary+head+body+'</table></body></html>';}
+async function exportTextSmb(type,text,ext){if(!text||!text.trim()){alert('Kein Export-Text vorhanden.');return;}try{const r=await fetch('/api/export-scan-smb?type='+encodeURIComponent(type)+'&ext='+(ext||'txt')+'&text='+encodeURIComponent(text),{cache:'no-store'});const j=await r.json();alert(j.ok?'SMB Export gespeichert: '+j.file:'SMB Export Fehler: '+j.error);}catch(e){alert('SMB Export Fehler: '+e);}}
+function downloadExcel(type,text){const html=buildExcelHtml('Casambi Jungle '+type,type,text);const blob=new Blob([html],{type:'application/vnd.ms-excel'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='casambi_jungle_'+String(type||'scan')+'_'+new Date().toISOString().replace(/[:.]/g,'_')+'.xls';a.click();setTimeout(function(){URL.revokeObjectURL(a.href)},1200);}
 function deleteHistory(index){let arr=getHistory();arr.splice(index,1);setHistory(arr);loadHistory();}
 function copyHistory(index){let h=getHistory()[index];if(!h)return;navigator.clipboard&&navigator.clipboard.writeText(h.text||'');}
 function exportHistory(index){let h=getHistory()[index];if(!h)return;let blob=new Blob([h.text||''],{type:'text/plain'});let a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='casambi_scan_'+String(h.type||'scan')+'_'+String(h.time||'').replace(/[^0-9A-Za-z_-]/g,'_')+'.txt';a.click();setTimeout(function(){URL.revokeObjectURL(a.href)},1200);}
-function exportHistorySmb(index){let h=getHistory()[index];if(!h)return;exportTextSmb(String(h.type||'scan'),String(h.text||''));}
+function exportHistorySmb(index){let h=getHistory()[index];if(!h)return;exportTextSmb(String(h.type||'scan'),String(h.text||''),'txt');}
+function exportHistoryExcel(index){let h=getHistory()[index];if(!h)return;downloadExcel(String(h.type||'scan'),String(h.text||''));}
+function exportHistoryExcelSmb(index){let h=getHistory()[index];if(!h)return;exportTextSmb(String(h.type||'scan')+'_excel',buildExcelHtml('Casambi Jungle '+String(h.type||'scan'),String(h.type||'scan'),String(h.text||'')),'xls');}
 function histVal(line,key){let m=String(line).match(new RegExp(key+'=([^ ]+(?: [^ ]+)?)(?=  |$)'));return m?m[1]:'-';}
 function histSignal(line){let m=String(line).match(/signal=(-?\d+) dBm/);return m?parseInt(m[1]):-999;}
 function histChannel(line){let m=String(line).match(/ch=(\d+)/);return m?parseInt(m[1]):999;}
 function sortLines(lines){let mode=document.getElementById('historySort')?.value||'default';let out=lines.slice();if(mode==='type')out.sort(function(a,b){return classifyLine(a).localeCompare(classifyLine(b));});else if(mode==='wifiSsid')out.sort(function(a,b){return histVal(a,'ssid').localeCompare(histVal(b,'ssid'))||histSignal(b)-histSignal(a);});else if(mode==='wifiSignal')out.sort(function(a,b){return histSignal(b)-histSignal(a);});else if(mode==='wifiChannel')out.sort(function(a,b){return histChannel(a)-histChannel(b)||histVal(a,'ssid').localeCompare(histVal(b,'ssid'));});else if(mode==='networkHost')out.sort(function(a,b){return histVal(a,'host').localeCompare(histVal(b,'host'),undefined,{numeric:true});});else if(mode==='bleSignal')out.sort(function(a,b){return histSignal(b)-histSignal(a);});return out;}
 function filteredHistory(){const f=(document.getElementById('historyFilter')?.value||'').toLowerCase();return getHistory().map(function(h,i){return {h:h,i:i}}).filter(function(o){let h=o.h;return !f || (String(h.type)+' '+String(h.time)+' '+String(h.text)).toLowerCase().indexOf(f)>=0;});}
-function exportFilteredHistorySmb(){let view=filteredHistory();let text=view.map(function(o){return '=== '+String(o.h.time||'')+' '+String(o.h.type||'scan')+' ===\n'+String(o.h.text||'');}).join('\n\n');exportTextSmb('history_filtered',text);}
+function filteredText(){return filteredHistory().map(function(o){return '=== '+String(o.h.time||'')+' '+String(o.h.type||'scan')+' ===\n'+String(o.h.text||'');}).join('\n\n');}
+function exportFilteredHistorySmb(){exportTextSmb('history_filtered',filteredText(),'txt');}
+function exportFilteredHistoryExcelSmb(){exportTextSmb('history_filtered_excel',buildExcelHtml('Casambi Jungle History','History',filteredText()),'xls');}
+function downloadFilteredExcel(){downloadExcel('history_filtered',filteredText());}
 function clearHistory(){setHistory([]);loadHistory();}
 function expandHistory(){document.querySelectorAll('.historyItem').forEach(function(d){d.open=true;});}
 function collapseHistory(){document.querySelectorAll('.historyItem').forEach(function(d){d.open=false;});}
 function setQuickFilter(v){document.getElementById('historyFilter').value=(v==='all')?'':v;loadHistory();}
-function loadHistory(){const box=document.getElementById('historyBox');let view=filteredHistory();if(!view.length){box.textContent='Keine passenden Scan-Eintraege gefunden.';return;}box.innerHTML=view.map(function(o){const h=o.h;const lines=String(h.text||'').split('\\n').filter(Boolean);const sum=quickSummary(lines);const sorted=sortLines(lines);const body=sorted.map(lineCard).join('');let best=sum.best?(' · Best '+sum.best+' dBm'):'';return "<details class='historyItem'><summary><span>"+escHtml(h.time)+"</span><b>"+escHtml(h.type)+"</b><em>"+lines.length+" Zeilen · WiFi "+sum.wifi+" · Hosts "+sum.net+" · BLE "+sum.ble+" · Casambi "+sum.cas+best+"</em><button onclick='event.preventDefault();event.stopPropagation();deleteHistory("+o.i+")'>🗑 Delete</button><button onclick='event.preventDefault();event.stopPropagation();copyHistory("+o.i+")'>Copy</button><button onclick='event.preventDefault();event.stopPropagation();exportHistory("+o.i+")'>TXT</button><button onclick='event.preventDefault();event.stopPropagation();exportHistorySmb("+o.i+")'>SMB</button></summary><div class='historyTree'>"+body+"</div></details>";}).join('');}
+function loadHistory(){const box=document.getElementById('historyBox');let view=filteredHistory();if(!view.length){box.textContent='Keine passenden Scan-Eintraege gefunden.';return;}box.innerHTML=view.map(function(o){const h=o.h;const lines=String(h.text||'').split('\n').filter(Boolean);const sum=quickSummary(lines);const sorted=sortLines(lines);const body=sorted.map(lineCard).join('');let best=sum.best?(' · Best '+sum.best+' dBm'):'';return "<details class='historyItem'><summary><span>"+escHtml(h.time)+"</span><b>"+escHtml(h.type)+"</b><em>"+lines.length+" Zeilen · WiFi "+sum.wifi+" · Hosts "+sum.net+" · BLE "+sum.ble+" · Casambi "+sum.cas+best+"</em><button onclick='event.preventDefault();event.stopPropagation();deleteHistory("+o.i+")'>🗑 Delete</button><button onclick='event.preventDefault();event.stopPropagation();copyHistory("+o.i+")'>Copy</button><button onclick='event.preventDefault();event.stopPropagation();exportHistory("+o.i+")'>TXT</button><button onclick='event.preventDefault();event.stopPropagation();exportHistorySmb("+o.i+")'>SMB</button><button onclick='event.preventDefault();event.stopPropagation();exportHistoryExcel("+o.i+")'>Excel</button><button onclick='event.preventDefault();event.stopPropagation();exportHistoryExcelSmb("+o.i+")'>Excel SMB</button></summary><div class='historyTree'>"+body+"</div></details>";}).join('');}
 loadHistory();
 </script>
 """)
