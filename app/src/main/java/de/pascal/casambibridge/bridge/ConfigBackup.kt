@@ -26,7 +26,7 @@ object ConfigBackup {
         SmbFile(dir, ctx).use { if (!it.exists()) it.mkdirs() }
         val url = dir + FULL_FILE
         val root = JSONObject()
-            .put("version", "0.8.4")
+            .put("version", "0.9.0")
             .put("created", System.currentTimeMillis())
             .put("lastApiSyncMillis", ConfigStore.lastSyncMillis(context))
             .put("config", toJson(c))

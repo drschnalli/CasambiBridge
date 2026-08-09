@@ -144,7 +144,7 @@ class MainActivity : AppCompatActivity() {
 
         val headerBlock = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         headerBlock.addView(TextView(this).apply {
-            text = "🌴 CASAMBI JUNGLE\n// v0.8.4"
+            text = "🌴 CASAMBI JUNGLE\n// v0.9.0"
             textSize = 20f
             setTextColor(leaf)
             setTypeface(Typeface.MONOSPACE, Typeface.BOLD)
@@ -1050,12 +1050,36 @@ class MainActivity : AppCompatActivity() {
             freq in 5925..7125 -> "6 GHz"
             else -> "${freq} MHz"
         }
+        fun wifiChannel(freq: Int): Int = when {
+            freq == 2484 -> 14
+            freq in 2412..2472 -> ((freq - 2407) / 5)
+            freq in 5000..5895 -> ((freq - 5000) / 5)
+            freq in 5955..7115 -> ((freq - 5950) / 5)
+            else -> 0
+        }
+        fun wifiQuality(rssi: Int): String = when {
+            rssi >= -50 -> "Excellent"
+            rssi >= -67 -> "Good"
+            rssi >= -75 -> "Fair"
+            rssi >= -85 -> "Weak"
+            else -> "Very weak"
+        }
+        fun signalBar(rssi: Int): String = when {
+            rssi >= -50 -> "██████████"
+            rssi >= -67 -> "████████░░"
+            rssi >= -75 -> "██████░░░░"
+            rssi >= -85 -> "████░░░░░░"
+            else -> "██░░░░░░░░"
+        }
         @Suppress("DEPRECATION")
         fun wifiLine(r: android.net.wifi.ScanResult): String {
             val ssid = (r.SSID ?: "").ifBlank { "<hidden>" }
             val sec = wifiSecurityLabel(r.capabilities ?: "")
             val band = wifiBand(r.frequency)
-            return "rssi=${r.level.toString().padStart(4)}  ssid=$ssid  sec=$sec  band=$band  freq=${r.frequency}  bssid=${r.BSSID}  caps=${r.capabilities}"
+            val ch = wifiChannel(r.frequency)
+            val quality = wifiQuality(r.level)
+            val bar = signalBar(r.level)
+            return "📶 ssid=$ssid  bssid=${r.BSSID}  signal=${r.level} dBm $quality $bar  🔐 sec=$sec  band=$band  ch=$ch  freq=${r.frequency} MHz  features=${r.capabilities}"
         }
         @Suppress("DEPRECATION")
         fun renderWifiRows(rowsRaw: List<android.net.wifi.ScanResult>, filter: String) {
