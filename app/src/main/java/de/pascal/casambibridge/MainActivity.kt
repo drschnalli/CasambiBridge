@@ -257,7 +257,16 @@ class MainActivity : AppCompatActivity() {
             tabButtons.forEach { (page, button) -> styleTab(button, page == target) }
         }
 
-        fun menuItem(label: String, target: LinearLayout): Button = button(label).apply {
+        fun menuItem(label: String, target: LinearLayout): Button = Button(this).apply {
+            text = label
+            textSize = 11f
+            setTypeface(Typeface.MONOSPACE, Typeface.BOLD)
+            setTextColor(Color.rgb(0, 18, 8))
+            setBackgroundColor(leaf)
+            isAllCaps = false
+            minHeight = 0
+            minimumHeight = 0
+            setPadding(4, 8, 4, 8)
             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { setMargins(0, 4, 0, 4) }
             setOnClickListener { showPage(target); sideMenu.visibility = View.GONE }
         }
