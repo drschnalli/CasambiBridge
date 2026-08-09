@@ -672,7 +672,8 @@ async function startWifiLive(){wifiStop=false;clearTerminal('wifiTerminal','wifi
 <section class='hero card wide glassHero'><h1>Scan History</h1><p class='muted'>Die letzten 10 Web-Scans werden lokal im Browser gespeichert. Eintrag anklicken zum Aufklappen.</p></section>
 <section class='card wide'><h2>Letzte Scans</h2><div id='historyBox' class='historyBox'>Lade History...</div></section>
 <script>
-function loadHistory(){const box=document.getElementById('historyBox');let arr=[];try{arr=JSON.parse(localStorage.scanHistory||'[]')}catch(e){};if(!arr.length){box.textContent='Noch keine Web-Scans gespeichert.';return;}box.innerHTML=arr.map((h,i)=>`<details class='historyItem'><summary>${h.time} · ${h.type} · ${h.count} Zeilen</summary><pre>${h.text.replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]))}</pre></details>`).join('');}
+function escHtml(v){return String(v||'').replace(/[&<>]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;'}[c];});}
+function loadHistory(){const box=document.getElementById('historyBox');let arr=[];try{arr=JSON.parse(localStorage.scanHistory||'[]')}catch(e){};if(!arr.length){box.textContent='Noch keine Web-Scans gespeichert.';return;}box.innerHTML=arr.map(function(h){return "<details class='historyItem'><summary>"+escHtml(h.time)+" · "+escHtml(h.type)+" · "+escHtml(h.count)+" Zeilen</summary><pre>"+escHtml(h.text)+"</pre></details>";}).join('');}
 loadHistory();
 </script>
 """)
