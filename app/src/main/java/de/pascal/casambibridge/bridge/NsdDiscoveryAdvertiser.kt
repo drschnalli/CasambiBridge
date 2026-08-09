@@ -38,7 +38,7 @@ object NsdDiscoveryAdvertiser {
             this.port = port
             if (Build.VERSION.SDK_INT >= 21) {
                 setAttribute("name", serviceName)
-                setAttribute("version", "0.8.0")
+                setAttribute("version", "0.8.1")
                 setAttribute("api", "/api/info")
                 setAttribute("status", "/api/status")
                 setAttribute("ws", "/ws")

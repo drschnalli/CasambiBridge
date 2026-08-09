@@ -144,7 +144,7 @@ class MainActivity : AppCompatActivity() {
 
         val headerBlock = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         headerBlock.addView(TextView(this).apply {
-            text = "🌴 CASAMBI JUNGLE\n// v0.8.0"
+            text = "🌴 CASAMBI JUNGLE\n// v0.8.1"
             textSize = 20f
             setTextColor(leaf)
             setTypeface(Typeface.MONOSPACE, Typeface.BOLD)
@@ -230,9 +230,20 @@ class MainActivity : AppCompatActivity() {
         val settingsPage = page()
         val advancedPage = page()
         val pages = listOf(homePage, setupPage, controlPage, settingsPage, advancedPage)
-        root.addView(sideMenu)
-        pages.forEach { root.addView(it) }
-        root.addView(tabBar)
+        val contentRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+        }
+        val pageArea = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        }
+        sideMenu.layoutParams = LinearLayout.LayoutParams(260, LinearLayout.LayoutParams.WRAP_CONTENT).apply { setMargins(0, 0, 10, 0) }
+        contentRow.addView(sideMenu)
+        contentRow.addView(pageArea)
+        pages.forEach { pageArea.addView(it) }
+        pageArea.addView(tabBar)
+        root.addView(contentRow)
         var currentPage: LinearLayout = homePage
         val tabButtons = linkedMapOf<LinearLayout, Button>()
         fun styleTab(button: Button, active: Boolean) {
@@ -282,7 +293,7 @@ class MainActivity : AppCompatActivity() {
         sideMenu.addView(menuItem("CONTROL", controlPage))
         sideMenu.addView(menuItem("SETTINGS", settingsPage))
         sideMenu.addView(menuItem("TOOLS / ADVANCED", advancedPage))
-        menuButton.setOnClickListener { sideMenu.visibility = if (sideMenu.visibility == View.VISIBLE) View.GONE else View.VISIBLE }
+        menuButton.setOnClickListener { sideMenu.visibility = if (sideMenu.visibility == View.VISIBLE) View.GONE else View.VISIBLE; statusText.takeIf { ::statusText.isInitialized }?.text = if (sideMenu.visibility == View.VISIBLE) "Menu geöffnet" else "Menu geschlossen" }
 
         fun tab(text: String, target: LinearLayout): Button = Button(this).apply {
             this.tag = text
